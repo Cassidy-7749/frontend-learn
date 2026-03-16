@@ -1,0 +1,438 @@
+# 無障礙（ARIA）
+
+網頁無障礙（Web Accessibility，簡稱 a11y）是指讓所有人都能使用網頁，包括視覺、聽覺、肢體或認知障礙的使用者。這不只是道德責任，在許多國家也是法律要求。
+
+## 什麼是無障礙
+
+### 誰會受益？
+
+- **視障使用者** — 使用螢幕閱讀器（Screen Reader）來瀏覽網頁。
+- **色弱/色盲使用者** — 依賴非色彩的視覺線索。
+- **聽障使用者** — 需要影片字幕或文字替代方案。
+- **肢體障礙使用者** — 無法使用滑鼠，依賴鍵盤或其他輔助設備。
+- **認知障礙使用者** — 需要清晰、一致的介面。
+- **暫時性障礙** — 手受傷、在吵雜環境中、螢幕反光等。
+- **老年使用者** — 視力下降、動作不精確等。
+
+### WCAG 指南
+
+Web Content Accessibility Guidelines（WCAG）是國際認可的無障礙標準，基於四大原則：
+
+1. **可感知（Perceivable）** — 資訊必須能被使用者感知。
+2. **可操作（Operable）** — 介面元素必須能被操作。
+3. **可理解（Understandable）** — 資訊和操作方式必須可以理解。
+4. **穩健（Robust）** — 內容必須能被各種使用者代理正確解讀。
+
+<Callout type="info" title="資訊">
+WCAG 有三個等級：A（基本）、AA（進階）、AAA（最高）。大多數法規和組織要求達到 AA 等級。許多國家的法律（如美國的 ADA、歐盟的 EAA）都以 WCAG 為基準。
+</Callout>
+
+## ARIA 角色、狀態與屬性
+
+WAI-ARIA（Web Accessibility Initiative – Accessible Rich Internet Applications）提供了一套屬性，讓我們可以為 HTML 元素添加額外的無障礙語意。
+
+### ARIA 角色（Roles）
+
+角色定義了元素的用途：
+
+```html
+<!-- 地標角色 -->
+<div role="banner">頁首區域</div>
+<div role="navigation">導覽區域</div>
+<div role="main">主要內容</div>
+<div role="complementary">側邊欄</div>
+<div role="contentinfo">頁尾區域</div>
+
+<!-- 互動角色 -->
+<div role="button" tabindex="0">自訂按鈕</div>
+<div role="tablist">
+  <div role="tab">分頁 1</div>
+  <div role="tab">分頁 2</div>
+</div>
+<div role="alert">重要通知！</div>
+<div role="dialog">對話框內容</div>
+```
+
+### ARIA 狀態與屬性
+
+```html
+<!-- 狀態 -->
+<button aria-pressed="true">已按下</button>
+<div aria-expanded="false">可展開區塊</div>
+<input aria-invalid="true">
+<div aria-hidden="true">對螢幕閱讀器隱藏</div>
+<div aria-busy="true">載入中...</div>
+<option aria-selected="true">已選取</option>
+<input aria-disabled="true">
+
+<!-- 屬性 -->
+<input aria-label="搜尋網站">
+<input aria-labelledby="myLabel">
+<div aria-describedby="helpText">...</div>
+<div aria-live="polite">動態更新區域</div>
+<input aria-required="true">
+```
+
+<Callout type="warning" title="注意">
+ARIA 的第一原則：**如果能用原生 HTML 元素達成，就不要用 ARIA**。例如，使用 `<button>` 而非 `<div role="button">`。原生元素自帶鍵盤互動和無障礙語意，不需要額外處理。
+</Callout>
+
+### aria-live 動態區域
+
+`aria-live` 讓螢幕閱讀器可以在內容動態更新時通知使用者：
+
+```html
+<!-- polite：等使用者空閒時再朗讀 -->
+<div aria-live="polite" id="status">
+  目前有 3 筆結果
+</div>
+
+<!-- assertive：立即中斷並朗讀 -->
+<div aria-live="assertive" id="error">
+  發生錯誤！請重試。
+</div>
+```
+
+## 螢幕閱讀器最佳實踐
+
+### 圖片的替代文字
+
+```html
+<!-- 有意義的圖片：提供描述 -->
+<img src="chart.png" alt="2024年銷售成長趨勢圖，第四季成長 25%">
+
+<!-- 裝飾性圖片：使用空的 alt -->
+<img src="decoration.png" alt="">
+
+<!-- 複雜圖片：使用 aria-describedby 提供詳細說明 -->
+<img src="infographic.png" alt="公司組織架構圖"
+     aria-describedby="orgDetails">
+<div id="orgDetails" class="sr-only">
+  公司分為三個部門：研發部、業務部和行政部...
+</div>
+```
+
+### 隱藏與顯示的技巧
+
+```css
+/* 視覺上隱藏，但螢幕閱讀器可讀取 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+```
+
+```html
+<!-- 完全隱藏（視覺 + 螢幕閱讀器） -->
+<div hidden>完全隱藏</div>
+<div aria-hidden="true" style="display:none">也是完全隱藏</div>
+
+<!-- 只對螢幕閱讀器隱藏 -->
+<div aria-hidden="true">裝飾性內容</div>
+
+<!-- 只對視覺隱藏，螢幕閱讀器可讀 -->
+<span class="sr-only">額外說明文字</span>
+```
+
+## 鍵盤導覽
+
+許多使用者無法使用滑鼠，因此鍵盤導覽是無障礙的核心。
+
+### tabindex 的使用
+
+```html
+<!-- 自然可聚焦的元素（不需要 tabindex） -->
+<button>按鈕</button>
+<a href="#">連結</a>
+<input type="text">
+
+<!-- tabindex="0"：加入 tab 順序 -->
+<div tabindex="0" role="button">自訂按鈕</div>
+
+<!-- tabindex="-1"：可透過 JS 聚焦，但不在 tab 順序中 -->
+<div tabindex="-1" id="modal">對話框</div>
+
+<!-- tabindex > 0：避免使用！會打亂自然順序 -->
+```
+
+### 焦點管理
+
+```js
+// 聚焦到元素
+element.focus();
+
+// 焦點陷阱（Focus Trap）— 常用於 Modal
+modal.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    const focusable = modal.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+});
+```
+
+### 焦點樣式
+
+```css
+/* 不要移除焦點樣式！ */
+/* 錯誤做法 */
+*:focus { outline: none; }
+
+/* 正確做法：自訂焦點樣式 */
+:focus-visible {
+  outline: 3px solid #4a90d9;
+  outline-offset: 2px;
+}
+```
+
+<Callout type="tip" title="提示">
+`:focus-visible` 只在鍵盤操作時顯示焦點框，滑鼠點擊時不顯示。這讓你可以同時滿足鍵盤使用者的需求和視覺設計的要求。
+</Callout>
+
+## 互動範例：無障礙元件
+
+以下範例展示了一個具備完整無障礙支援的手風琴元件（Accordion）：
+
+<CodePlayground
+  title="無障礙手風琴元件"
+  defaultHTML={`<div class="accordion" role="region" aria-label="常見問題">
+  <h2>常見問題 FAQ</h2>
+
+  <div class="accordion-item">
+    <h3>
+      <button class="accordion-trigger"
+              aria-expanded="false"
+              aria-controls="panel-1"
+              id="trigger-1">
+        <span>什麼是網頁無障礙？</span>
+        <span class="icon" aria-hidden="true">▶</span>
+      </button>
+    </h3>
+    <div class="accordion-panel"
+         id="panel-1"
+         role="region"
+         aria-labelledby="trigger-1"
+         hidden>
+      <p>網頁無障礙是指讓所有人（包括身心障礙者）都能感知、理解、導覽並與網頁互動的設計實踐。這涵蓋了視覺、聽覺、肢體和認知等各方面的需求。</p>
+    </div>
+  </div>
+
+  <div class="accordion-item">
+    <h3>
+      <button class="accordion-trigger"
+              aria-expanded="false"
+              aria-controls="panel-2"
+              id="trigger-2">
+        <span>為什麼無障礙很重要？</span>
+        <span class="icon" aria-hidden="true">▶</span>
+      </button>
+    </h3>
+    <div class="accordion-panel"
+         id="panel-2"
+         role="region"
+         aria-labelledby="trigger-2"
+         hidden>
+      <p>全球約有 15% 的人口有某種形式的障礙。良好的無障礙設計不僅是法律要求，也能改善所有使用者的體驗，並擴大你的受眾群體。</p>
+    </div>
+  </div>
+
+  <div class="accordion-item">
+    <h3>
+      <button class="accordion-trigger"
+              aria-expanded="false"
+              aria-controls="panel-3"
+              id="trigger-3">
+        <span>如何測試無障礙？</span>
+        <span class="icon" aria-hidden="true">▶</span>
+      </button>
+    </h3>
+    <div class="accordion-panel"
+         id="panel-3"
+         role="region"
+         aria-labelledby="trigger-3"
+         hidden>
+      <p>可以使用以下方法：</p>
+      <ul>
+        <li>使用鍵盤瀏覽整個網站（不用滑鼠）</li>
+        <li>使用螢幕閱讀器測試（如 NVDA、VoiceOver）</li>
+        <li>使用自動化工具（如 axe、Lighthouse）</li>
+        <li>進行真實使用者測試</li>
+      </ul>
+    </div>
+  </div>
+
+  <div aria-live="polite" class="sr-only" id="liveRegion"></div>
+</div>`}
+  defaultCSS={`* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: sans-serif; padding: 1.5rem; background: #f5f5f5; }
+
+.accordion {
+  max-width: 600px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+h2 { margin-bottom: 1rem; color: #333; }
+
+.accordion-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+.accordion-trigger {
+  width: 100%;
+  padding: 1rem;
+  background: #fafafa;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+  transition: background 0.2s;
+}
+.accordion-trigger:hover { background: #f0f0f0; }
+.accordion-trigger:focus-visible {
+  outline: 3px solid #4a90d9;
+  outline-offset: -3px;
+}
+.accordion-trigger[aria-expanded="true"] {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+.icon {
+  transition: transform 0.3s;
+  font-size: 0.8rem;
+}
+.accordion-trigger[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
+}
+
+.accordion-panel {
+  padding: 1rem;
+  line-height: 1.6;
+  color: #555;
+  border-top: 1px solid #e0e0e0;
+  animation: slideDown 0.3s ease;
+}
+.accordion-panel ul {
+  margin-top: 0.5rem;
+  padding-left: 1.5rem;
+}
+.accordion-panel li { margin-bottom: 0.3rem; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}`}
+  defaultJS={`const triggers = document.querySelectorAll('.accordion-trigger');
+const liveRegion = document.getElementById('liveRegion');
+
+triggers.forEach(trigger => {
+  trigger.addEventListener('click', function() {
+    const expanded = this.getAttribute('aria-expanded') === 'true';
+    const panel = document.getElementById(
+      this.getAttribute('aria-controls')
+    );
+
+    // 切換狀態
+    this.setAttribute('aria-expanded', !expanded);
+
+    if (expanded) {
+      panel.setAttribute('hidden', '');
+      liveRegion.textContent = '已收合：' +
+        this.querySelector('span').textContent;
+    } else {
+      panel.removeAttribute('hidden');
+      liveRegion.textContent = '已展開：' +
+        this.querySelector('span').textContent;
+    }
+  });
+
+  // 支援方向鍵導覽
+  trigger.addEventListener('keydown', function(e) {
+    const triggers = Array.from(
+      document.querySelectorAll('.accordion-trigger')
+    );
+    const index = triggers.indexOf(this);
+
+    let newIndex;
+    switch(e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        newIndex = (index + 1) % triggers.length;
+        triggers[newIndex].focus();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        newIndex = (index - 1 + triggers.length) % triggers.length;
+        triggers[newIndex].focus();
+        break;
+      case 'Home':
+        e.preventDefault();
+        triggers[0].focus();
+        break;
+      case 'End':
+        e.preventDefault();
+        triggers[triggers.length - 1].focus();
+        break;
+    }
+  });
+});`}
+/>
+
+## 無障礙檢查清單
+
+開發時可以參考以下檢查清單：
+
+- 所有圖片都有適當的 `alt` 屬性。
+- 所有表單元素都有 `<label>`。
+- 色彩對比度符合 WCAG AA 標準（一般文字 4.5:1，大文字 3:1）。
+- 所有功能都可以透過鍵盤操作。
+- 焦點順序合理且可見。
+- 動態內容使用 `aria-live` 通知螢幕閱讀器。
+- 頁面有正確的標題層級結構（h1 -> h2 -> h3）。
+- 互動元件有適當的 ARIA 角色和狀態。
+
+## 總結
+
+- 無障礙設計不是額外的工作，而是好的開發實踐的一部分。
+- 優先使用原生 HTML 元素，它們自帶無障礙支援。
+- ARIA 是補充原生語意不足時的工具，而非替代品。
+- 鍵盤導覽和焦點管理是無障礙的核心。
+- 定期使用自動化工具和手動測試來檢查無障礙合規性。

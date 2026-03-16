@@ -1,0 +1,312 @@
+# 原型與繼承
+
+JavaScript 是基於原型（prototype-based）的語言。與 Java、C++ 等基於類別（class-based）的語言不同，JavaScript 的繼承機制建立在原型鏈（prototype chain）之上。
+
+## __proto__ 與 prototype
+
+這是最容易混淆的兩個屬性，必須釐清：
+
+```js
+function Person(name) {
+  this.name = name;
+}
+
+Person.prototype.greet = function() {
+  return `Hi, I'm ${this.name}`;
+};
+
+const alice = new Person('Alice');
+
+// prototype — 函式才有的屬性，定義實例的原型
+console.log(Person.prototype); // { greet: [Function], constructor: Person }
+
+// __proto__ — 每個物件都有，指向其建構函式的 prototype
+console.log(alice.__proto__ === Person.prototype); // true
+
+// constructor — 原型上的屬性，指回建構函式
+console.log(Person.prototype.constructor === Person); // true
+```
+
+<Callout type="tip" title="__proto__ 的正式替代">
+`__proto__` 是非標準屬性（雖然所有瀏覽器都支援）。推薦使用 `Object.getPrototypeOf(obj)` 來取得物件的原型，使用 `Object.setPrototypeOf(obj, proto)` 來設定原型。
+</Callout>
+
+## 原型鏈（Prototype Chain）
+
+當存取物件的屬性時，JavaScript 會沿著原型鏈向上查找：
+
+```js
+function Animal(name) {
+  this.name = name;
+}
+Animal.prototype.speak = function() {
+  return `${this.name} makes a sound`;
+};
+
+const dog = new Animal('Rex');
+
+// 查找順序：
+// 1. dog 自身 → 找到 name
+console.log(dog.name); // 'Rex'
+
+// 2. dog.__proto__ (Animal.prototype) → 找到 speak
+console.log(dog.speak()); // 'Rex makes a sound'
+
+// 3. dog.__proto__.__proto__ (Object.prototype) → 找到 toString
+console.log(dog.toString()); // '[object Object]'
+
+// 4. dog.__proto__.__proto__.__proto__ → null（鏈的盡頭）
+console.log(Object.getPrototypeOf(Object.prototype)); // null
+```
+
+### hasOwnProperty
+
+用 `hasOwnProperty` 區分自身屬性與繼承的屬性：
+
+```js
+const dog = new Animal('Rex');
+console.log(dog.hasOwnProperty('name'));  // true — 自身屬性
+console.log(dog.hasOwnProperty('speak')); // false — 來自原型
+```
+
+## Object.create()
+
+`Object.create()` 直接建立一個以指定物件為原型的新物件：
+
+```js
+const animal = {
+  speak() {
+    return `${this.name} makes a sound`;
+  }
+};
+
+const cat = Object.create(animal);
+cat.name = 'Whiskers';
+console.log(cat.speak()); // 'Whiskers makes a sound'
+console.log(Object.getPrototypeOf(cat) === animal); // true
+
+// 建立無原型的純淨物件
+const dict = Object.create(null);
+// dict 沒有 toString、hasOwnProperty 等方法
+// 適合當作純粹的 key-value 字典使用
+```
+
+## 原型繼承的實作
+
+在 ES6 class 出現之前，繼承通常這樣寫：
+
+```js
+function Animal(name) {
+  this.name = name;
+}
+Animal.prototype.speak = function() {
+  return `${this.name} makes a sound`;
+};
+
+function Dog(name, breed) {
+  Animal.call(this, name); // 呼叫父建構函式
+  this.breed = breed;
+}
+
+// 設定原型鏈
+Dog.prototype = Object.create(Animal.prototype);
+Dog.prototype.constructor = Dog; // 修正 constructor
+
+Dog.prototype.bark = function() {
+  return `${this.name} barks!`;
+};
+
+const rex = new Dog('Rex', 'Labrador');
+console.log(rex.speak()); // 'Rex makes a sound'（繼承自 Animal）
+console.log(rex.bark());  // 'Rex barks!'（自身方法）
+console.log(rex instanceof Dog);    // true
+console.log(rex instanceof Animal); // true
+```
+
+<Callout type="warning" title="不要直接賦值 prototype">
+不要使用 `Dog.prototype = new Animal()`，這會在設定原型時就執行 Animal 的建構函式，可能帶來副作用。應使用 `Object.create(Animal.prototype)`。
+</Callout>
+
+## class 語法糖
+
+ES6 的 `class` 本質上是原型繼承的語法糖，底層機制完全相同：
+
+```js
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+
+  speak() {
+    return `${this.name} makes a sound`;
+  }
+
+  // 靜態方法
+  static create(name) {
+    return new Animal(name);
+  }
+}
+
+// typeof Animal === 'function' — class 本質是函式
+```
+
+## extends 與 super
+
+`extends` 建立繼承關係，`super` 呼叫父類別的方法：
+
+```js
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name); // 必須在使用 this 之前呼叫 super
+    this.breed = breed;
+  }
+
+  speak() {
+    // 覆寫父方法，並透過 super 呼叫原始行為
+    return `${super.speak()} — specifically, ${this.name} barks!`;
+  }
+
+  fetch(item) {
+    return `${this.name} fetches the ${item}`;
+  }
+}
+
+const buddy = new Dog('Buddy', 'Golden');
+console.log(buddy.speak());       // "Buddy makes a sound — specifically, Buddy barks!"
+console.log(buddy.fetch('ball')); // "Buddy fetches the ball"
+console.log(buddy instanceof Dog);    // true
+console.log(buddy instanceof Animal); // true
+```
+
+### 驗證 class 就是原型的語法糖
+
+```js
+class Foo {
+  hello() { return 'hello'; }
+}
+
+// 等同於：
+function Foo2() {}
+Foo2.prototype.hello = function() { return 'hello'; };
+
+// 驗證
+console.log(typeof Foo);  // 'function'
+console.log(Foo.prototype.hello); // [Function: hello]
+```
+
+## 私有屬性與方法（ES2022）
+
+```js
+class BankAccount {
+  #balance; // 私有屬性
+
+  constructor(initial) {
+    this.#balance = initial;
+  }
+
+  #validate(amount) { // 私有方法
+    return amount > 0 && amount <= this.#balance;
+  }
+
+  withdraw(amount) {
+    if (this.#validate(amount)) {
+      this.#balance -= amount;
+      return true;
+    }
+    return false;
+  }
+
+  get balance() {
+    return this.#balance;
+  }
+}
+
+const account = new BankAccount(1000);
+account.withdraw(200);
+console.log(account.balance); // 800
+// console.log(account.#balance); // SyntaxError
+```
+
+## 互動範例
+
+<CodePlayground
+  title="原型鏈與繼承實驗"
+  defaultJS={`// === 原型鏈查找 ===
+function Animal(name) {
+  this.name = name;
+}
+Animal.prototype.speak = function() {
+  return this.name + ' makes a sound';
+};
+
+const dog = new Animal('Rex');
+console.log('speak:', dog.speak());
+console.log('hasOwnProperty name:', dog.hasOwnProperty('name'));
+console.log('hasOwnProperty speak:', dog.hasOwnProperty('speak'));
+console.log('---');
+
+// === 原型鏈視覺化 ===
+console.log('dog.__proto__ === Animal.prototype:',
+  Object.getPrototypeOf(dog) === Animal.prototype);
+console.log('Animal.prototype.__proto__ === Object.prototype:',
+  Object.getPrototypeOf(Animal.prototype) === Object.prototype);
+console.log('Object.prototype.__proto__:',
+  Object.getPrototypeOf(Object.prototype));
+console.log('---');
+
+// === class 繼承 ===
+class Shape {
+  constructor(color) {
+    this.color = color;
+  }
+  describe() {
+    return '一個' + this.color + '的圖形';
+  }
+}
+
+class Circle extends Shape {
+  constructor(color, radius) {
+    super(color);
+    this.radius = radius;
+  }
+  area() {
+    return Math.PI * this.radius ** 2;
+  }
+  describe() {
+    return super.describe() + '（圓形，半徑 ' + this.radius + '）';
+  }
+}
+
+class Rectangle extends Shape {
+  constructor(color, w, h) {
+    super(color);
+    this.width = w;
+    this.height = h;
+  }
+  area() {
+    return this.width * this.height;
+  }
+}
+
+const c = new Circle('紅色', 5);
+const r = new Rectangle('藍色', 4, 6);
+
+console.log(c.describe());
+console.log('圓面積:', c.area().toFixed(2));
+console.log(r.describe());
+console.log('矩形面積:', r.area());
+console.log('---');
+
+// === instanceof 檢查 ===
+console.log('c instanceof Circle:', c instanceof Circle);
+console.log('c instanceof Shape:', c instanceof Shape);
+console.log('r instanceof Circle:', r instanceof Circle);
+console.log('r instanceof Shape:', r instanceof Shape);
+console.log('---');
+
+// === 驗證 class 是語法糖 ===
+console.log('typeof Shape:', typeof Shape);
+console.log('Shape.prototype.describe:', typeof Shape.prototype.describe);`}
+/>
+
+理解原型與繼承後，接下來我們將學習 ES6+ 帶來的眾多現代特性。

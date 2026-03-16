@@ -1,0 +1,310 @@
+# Flexbox 彈性盒佈局
+
+Flexbox（Flexible Box Layout）是一種一維佈局模型，專門用於在一個方向上排列元素。它讓元素的對齊、分佈空間和適應不同螢幕大小變得簡單直覺。
+
+## Flex Container 與 Flex Items
+
+要啟用 Flexbox，只需要在父元素上設定 `display: flex`：
+
+```css
+.container {
+  display: flex; /* 或 display: inline-flex */
+}
+```
+
+- **Flex Container**：設定了 `display: flex` 的元素
+- **Flex Items**：Container 的直接子元素自動成為 Flex Items
+
+<Callout type="tip" title="display: flex vs inline-flex">
+`flex` 讓容器本身表現為 block 元素，佔滿整行。`inline-flex` 讓容器表現為 inline 元素，只佔內容所需寬度。
+</Callout>
+
+## 主軸與交叉軸
+
+Flexbox 有兩條軸線：
+
+- **主軸（Main Axis）**：由 `flex-direction` 決定方向
+- **交叉軸（Cross Axis）**：與主軸垂直的方向
+
+```css
+.container {
+  flex-direction: row;            /* 預設：左到右 → */
+  flex-direction: row-reverse;    /* 右到左 ← */
+  flex-direction: column;         /* 上到下 ↓ */
+  flex-direction: column-reverse; /* 下到上 ↑ */
+}
+```
+
+## Container 屬性
+
+### justify-content（主軸對齊）
+
+控制 Flex Items 在主軸上的分佈方式：
+
+```css
+.container {
+  justify-content: flex-start;    /* 靠起始端 */
+  justify-content: flex-end;      /* 靠結尾端 */
+  justify-content: center;        /* 置中 */
+  justify-content: space-between; /* 平均分佈，首尾貼邊 */
+  justify-content: space-around;  /* 平均分佈，兩側有半個間距 */
+  justify-content: space-evenly;  /* 完全平均分佈 */
+}
+```
+
+### align-items（交叉軸對齊）
+
+控制 Flex Items 在交叉軸上的對齊方式：
+
+```css
+.container {
+  align-items: stretch;     /* 預設：拉伸填滿 */
+  align-items: flex-start;  /* 靠交叉軸起始端 */
+  align-items: flex-end;    /* 靠交叉軸結尾端 */
+  align-items: center;      /* 交叉軸置中 */
+  align-items: baseline;    /* 文字基線對齊 */
+}
+```
+
+### flex-wrap（換行）
+
+```css
+.container {
+  flex-wrap: nowrap;       /* 預設：不換行 */
+  flex-wrap: wrap;         /* 自動換行 */
+  flex-wrap: wrap-reverse; /* 反向換行 */
+}
+```
+
+### align-content（多行對齊）
+
+當有多行時，`align-content` 控制各行在交叉軸上的分佈：
+
+```css
+.container {
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-content: center;
+  align-content: space-between;
+}
+```
+
+### gap（間距）
+
+```css
+.container {
+  gap: 16px;            /* 行列間距皆 16px */
+  gap: 10px 20px;       /* row-gap 10px, column-gap 20px */
+}
+```
+
+## Item 屬性
+
+### flex-grow
+
+決定元素如何分配剩餘空間。預設值為 0（不擴展）。
+
+```css
+.item-a { flex-grow: 1; }  /* 佔 1 份剩餘空間 */
+.item-b { flex-grow: 2; }  /* 佔 2 份剩餘空間 */
+```
+
+### flex-shrink
+
+決定空間不足時元素如何縮小。預設值為 1。
+
+```css
+.item { flex-shrink: 0; }  /* 不縮小 */
+.item { flex-shrink: 2; }  /* 縮小速度是其他元素的 2 倍 */
+```
+
+### flex-basis
+
+設定元素的初始大小（在 grow/shrink 計算之前）：
+
+```css
+.item { flex-basis: 200px; }  /* 初始寬度 200px */
+.item { flex-basis: auto; }   /* 預設：依內容大小 */
+.item { flex-basis: 0; }      /* 完全由 flex-grow 分配 */
+```
+
+### flex 縮寫
+
+```css
+.item {
+  flex: 1;          /* flex-grow: 1, flex-shrink: 1, flex-basis: 0% */
+  flex: 0 0 200px;  /* 不伸縮，固定 200px */
+  flex: 1 1 auto;   /* 可伸可縮，基於內容 */
+}
+```
+
+<Callout type="warning" title="flex: 1 vs flex: auto">
+`flex: 1` 等於 `flex: 1 1 0%`，所有元素從 0 開始平均分配空間。`flex: auto` 等於 `flex: 1 1 auto`，元素先以內容為基礎大小，再平均分配剩餘空間。兩者結果可能差異很大。
+</Callout>
+
+### align-self
+
+覆蓋父容器的 `align-items`，單獨設定某個 Item 的交叉軸對齊：
+
+```css
+.special-item {
+  align-self: center; /* 只有這個 item 交叉軸置中 */
+}
+```
+
+### order
+
+改變元素的視覺排列順序（不影響 DOM 順序）：
+
+```css
+.item-first { order: -1; }  /* 排到最前面 */
+.item-last  { order: 99; }  /* 排到最後面 */
+```
+
+## 互動範例
+
+<CodePlayground
+  title="Flexbox 佈局實驗場"
+  defaultHTML={`<div class="flex-container">
+  <div class="flex-item" style="flex: 2">
+    flex: 2
+  </div>
+  <div class="flex-item" style="flex: 1">
+    flex: 1
+  </div>
+  <div class="flex-item" style="flex: 1">
+    flex: 1
+  </div>
+</div>
+
+<h3>導覽列範例</h3>
+<nav class="navbar">
+  <div class="logo">Logo</div>
+  <ul class="nav-links">
+    <li>首頁</li>
+    <li>關於</li>
+    <li>服務</li>
+    <li>聯絡</li>
+  </ul>
+</nav>
+
+<h3>卡片居中</h3>
+<div class="center-demo">
+  <div class="centered-card">
+    完美居中 ✓
+  </div>
+</div>`}
+  defaultCSS={`.flex-container {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.flex-item {
+  background: #2196F3;
+  color: white;
+  padding: 20px;
+  text-align: center;
+  border-radius: 6px;
+  font-weight: bold;
+}
+
+/* 導覽列 */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #333;
+  color: white;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.nav-links {
+  display: flex;
+  gap: 20px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links li {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.nav-links li:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+/* 居中 */
+.center-demo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 120px;
+  background: #E8F5E9;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.centered-card {
+  padding: 20px 32px;
+  background: #4CAF50;
+  color: white;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+h3 { margin: 16px 0 4px; }`}
+  defaultJS={``}
+/>
+
+## 常見佈局模式
+
+### 聖杯佈局（Holy Grail）
+
+```css
+.holy-grail {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar { flex: 0 0 200px; }
+.main    { flex: 1; }
+.aside   { flex: 0 0 150px; }
+```
+
+### 底部固定（Sticky Footer）
+
+```css
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+main { flex: 1; }
+footer { flex-shrink: 0; }
+```
+
+### 等高卡片
+
+```css
+.cards {
+  display: flex;
+  gap: 16px;
+}
+.card {
+  flex: 1;
+  /* align-items: stretch 是預設值，卡片自動等高 */
+}
+```

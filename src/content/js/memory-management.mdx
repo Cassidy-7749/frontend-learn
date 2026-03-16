@@ -1,0 +1,393 @@
+# 記憶體管理與垃圾回收
+
+了解 JavaScript 的記憶體管理機制，能幫助你寫出效能更好、更穩定的應用。記憶體洩漏是前端常見的效能問題，尤其在單頁應用（SPA）中更為嚴重。
+
+## 記憶體生命週期
+
+所有程式語言的記憶體管理都遵循三個階段：
+
+```
+1. 分配（Allocation） → 宣告變數、建立物件時，引擎自動分配記憶體
+2. 使用（Usage）      → 讀寫已分配的記憶體
+3. 釋放（Release）    → 不再使用時，釋放記憶體（由垃圾回收器負責）
+```
+
+```js
+// 分配
+const name = 'Alice';           // 為字串分配記憶體
+const user = { name: 'Bob' };   // 為物件分配記憶體
+const arr = [1, 2, 3];          // 為陣列分配記憶體
+function greet() {}             // 為函式分配記憶體
+
+// 使用
+console.log(user.name);
+
+// 釋放 — 由 GC 自動處理
+// 當 user 不再被任何變數引用時，GC 會回收其記憶體
+```
+
+<Callout type="info" title="堆（Heap）與棧（Stack）">
+原始型別（number、string、boolean 等）的值存放在棧中，存取速度快但空間有限。物件、陣列、函式等引用型別存放在堆中，透過棧中的引用指標來存取。
+</Callout>
+
+## 垃圾回收機制
+
+### 引用計數（Reference Counting）
+
+早期的 GC 演算法，追蹤每個值被引用的次數，當引用計數歸零時回收記憶體：
+
+```js
+let obj1 = { name: 'A' };  // { name: 'A' } 引用計數 = 1
+let obj2 = obj1;            // { name: 'A' } 引用計數 = 2
+obj1 = null;                // { name: 'A' } 引用計數 = 1
+obj2 = null;                // { name: 'A' } 引用計數 = 0 → 可回收
+
+// 致命缺陷：循環引用
+function createCycle() {
+  const a = {};
+  const b = {};
+  a.ref = b;  // a 引用 b
+  b.ref = a;  // b 引用 a
+  // 函式結束後，a 和 b 的引用計數都不為 0
+  // 引用計數法無法回收！
+}
+```
+
+### 標記-清除（Mark-and-Sweep）
+
+現代 JavaScript 引擎（V8、SpiderMonkey 等）使用的主要演算法：
+
+```
+1. 從根物件（window、全域變數）開始
+2. 標記所有從根可達的物件
+3. 清除所有未被標記的物件
+```
+
+```js
+// Mark-and-Sweep 可以處理循環引用
+function noCycleIssue() {
+  const a = {};
+  const b = {};
+  a.ref = b;
+  b.ref = a;
+  // 函式結束後，a 和 b 都無法從根到達
+  // Mark-and-Sweep 會正確回收它們
+}
+```
+
+### V8 引擎的分代回收
+
+V8 將堆記憶體分為兩個區域：
+
+| 區域 | 說明 | GC 策略 |
+|------|------|---------|
+| 新生代（Young Generation） | 存放新建立、生命週期短的物件 | Scavenge（Minor GC），頻繁但快速 |
+| 老生代（Old Generation） | 存活較久的物件 | Mark-Sweep + Mark-Compact（Major GC），較慢 |
+
+新生代物件經過多次 GC 仍存活後，會被「晉升」到老生代。
+
+## 常見記憶體洩漏
+
+### 1. 意外的全域變數
+
+```js
+// 未宣告的變數會成為全域變數
+function leak() {
+  leakedVar = 'I am global!'; // 沒有用 let/const/var
+  this.anotherLeak = 'oops';  // 非嚴格模式下 this 指向 window
+}
+
+// 解決：使用嚴格模式
+'use strict';
+function safe() {
+  // leakedVar = ''; // ReferenceError!
+}
+```
+
+### 2. 未清理的計時器與回呼
+
+```js
+// 洩漏：計時器持有外部引用
+function startPolling() {
+  const hugeData = new Array(1000000).fill('data');
+
+  setInterval(() => {
+    // 即使 hugeData 不再需要，計時器仍持有引用
+    console.log(hugeData.length);
+  }, 1000);
+}
+
+// 解決：記得清除計時器
+function startPollingFixed() {
+  const hugeData = new Array(1000000).fill('data');
+
+  const intervalId = setInterval(() => {
+    console.log(hugeData.length);
+  }, 1000);
+
+  // 在適當時機清除
+  return () => clearInterval(intervalId);
+}
+```
+
+### 3. 閉包造成的洩漏
+
+```js
+// 閉包持有外部作用域的引用
+function createHandler() {
+  const largeArray = new Array(1000000).fill('x');
+
+  return function handler() {
+    // handler 持有 largeArray 的引用
+    // 只要 handler 存在，largeArray 就不會被回收
+    console.log(largeArray.length);
+  };
+}
+
+// 解決：在不需要時解除引用
+let handler = createHandler();
+// 使用完畢後
+handler = null; // 讓 GC 可以回收
+```
+
+### 4. 脫離 DOM 的引用
+
+```js
+// DOM 節點被移除，但 JS 仍持有引用
+const elements = {};
+
+function addElement() {
+  const el = document.createElement('div');
+  el.id = 'temporary';
+  document.body.appendChild(el);
+  elements.temp = el; // 在 JS 物件中保存引用
+}
+
+function removeElement() {
+  const el = document.getElementById('temporary');
+  document.body.removeChild(el);
+  // elements.temp 仍然引用著已移除的 DOM 節點！
+  // 記憶體不會被釋放
+}
+
+// 解決
+function removeElementFixed() {
+  const el = document.getElementById('temporary');
+  document.body.removeChild(el);
+  delete elements.temp; // 也清除 JS 引用
+}
+```
+
+<Callout type="warning" title="SPA 記憶體洩漏">
+單頁應用特別容易出現記憶體洩漏，因為頁面不會重新載入。常見場景包括：路由切換後未清除的事件監聽器、WebSocket 連線、全域事件訂閱。使用框架時，務必在元件卸載時做好清理。
+</Callout>
+
+## WeakMap 與 WeakSet
+
+`WeakMap` 和 `WeakSet` 的 key 是弱引用，不會阻止垃圾回收：
+
+```js
+// WeakMap — key 必須是物件
+const cache = new WeakMap();
+
+function process(obj) {
+  if (cache.has(obj)) {
+    return cache.get(obj);
+  }
+
+  const result = expensiveComputation(obj);
+  cache.set(obj, result);
+  return result;
+}
+
+let myObj = { data: 'important' };
+process(myObj);
+
+myObj = null; // myObj 可被 GC 回收，WeakMap 中的條目也會自動消失
+```
+
+```js
+// WeakSet — 追蹤物件是否被處理過
+const processed = new WeakSet();
+
+function processOnce(obj) {
+  if (processed.has(obj)) {
+    console.log('已處理過，跳過');
+    return;
+  }
+  processed.add(obj);
+  // 處理 obj...
+}
+```
+
+### WeakMap 的實際應用
+
+```js
+// 為 DOM 元素附加私有資料
+const elementData = new WeakMap();
+
+function setupElement(el) {
+  elementData.set(el, {
+    clickCount: 0,
+    createdAt: Date.now(),
+  });
+
+  el.addEventListener('click', () => {
+    const data = elementData.get(el);
+    data.clickCount++;
+    console.log(`點擊次數: ${data.clickCount}`);
+  });
+}
+// 當 el 從 DOM 移除且無其他引用時，
+// elementData 中對應的條目也會自動清除
+
+// 實現私有屬性
+const privateProps = new WeakMap();
+
+class Person {
+  constructor(name, age) {
+    privateProps.set(this, { name, age });
+  }
+  getName() {
+    return privateProps.get(this).name;
+  }
+}
+```
+
+<Callout type="tip" title="WeakRef 與 FinalizationRegistry">
+ES2021 引入了 `WeakRef`（弱引用）和 `FinalizationRegistry`（物件被 GC 回收時的回呼），提供了更精細的記憶體控制，但在一般應用中很少需要使用。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="記憶體洩漏示範與修復"
+  defaultHTML={`<div id="app">
+  <h3>記憶體洩漏場景示範</h3>
+  <button id="leakBtn">建立洩漏（計時器）</button>
+  <button id="fixBtn">修復版本</button>
+  <button id="cleanBtn">清除所有計時器</button>
+  <button id="weakMapBtn">WeakMap 示範</button>
+  <div id="status" style="margin:8px 0;padding:8px;background:#fef3c7;border-radius:4px;display:none;"></div>
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:80px;margin-top:8px;"></pre>
+</div>`}
+  defaultCSS={`#app { font-family: sans-serif; }
+button {
+  padding: 8px 14px;
+  margin: 4px;
+  border: none;
+  background: #ef4444;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:nth-child(2) { background: #10b981; }
+button:nth-child(3) { background: #6b7280; }
+button:nth-child(4) { background: #3b82f6; }
+button:hover { opacity: 0.9; }`}
+  defaultJS={`const output = document.getElementById('output');
+const statusEl = document.getElementById('status');
+const activeTimers = [];
+let timerCount = 0;
+
+function log(msg) {
+  output.textContent += msg + '\\n';
+}
+
+function showStatus(msg) {
+  statusEl.style.display = 'block';
+  statusEl.textContent = msg;
+}
+
+// 洩漏版本：計時器永遠不會被清除
+document.getElementById('leakBtn').addEventListener('click', () => {
+  output.textContent = '';
+  const bigArray = new Array(100000).fill('leak-data');
+  timerCount++;
+  const id = timerCount;
+
+  const timerId = setInterval(() => {
+    log('[洩漏 #' + id + '] 計時器仍在執行，持有 ' + bigArray.length + ' 筆資料');
+  }, 2000);
+
+  activeTimers.push(timerId);
+  showStatus('警告：已建立 ' + activeTimers.length + ' 個未清除的計時器！每個都持有大量資料。');
+  log('=== 建立洩漏計時器 #' + id + ' ===');
+  log('bigArray 佔用大量記憶體，但因計時器引用而無法被 GC 回收');
+  log('');
+});
+
+// 修復版本：正確清除計時器
+document.getElementById('fixBtn').addEventListener('click', () => {
+  output.textContent = '';
+  const bigArray = new Array(100000).fill('safe-data');
+  let count = 0;
+
+  log('=== 修復版本：自動停止的計時器 ===');
+
+  const timerId = setInterval(() => {
+    count++;
+    log('[安全] 第 ' + count + ' 次執行');
+    if (count >= 3) {
+      clearInterval(timerId);
+      log('[安全] 計時器已自動清除，bigArray 可被 GC 回收');
+    }
+  }, 1000);
+});
+
+// 清除所有洩漏的計時器
+document.getElementById('cleanBtn').addEventListener('click', () => {
+  output.textContent = '';
+  const count = activeTimers.length;
+  activeTimers.forEach(id => clearInterval(id));
+  activeTimers.length = 0;
+  log('已清除 ' + count + ' 個計時器');
+  statusEl.style.display = 'none';
+});
+
+// WeakMap 示範
+document.getElementById('weakMapBtn').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== WeakMap 示範 ===');
+
+  const cache = new WeakMap();
+
+  let obj1 = { id: 1, name: 'Alice' };
+  let obj2 = { id: 2, name: 'Bob' };
+
+  cache.set(obj1, '快取資料 A');
+  cache.set(obj2, '快取資料 B');
+
+  log('obj1 快取: ' + cache.get(obj1));
+  log('obj2 快取: ' + cache.get(obj2));
+  log('cache 包含 obj1: ' + cache.has(obj1));
+
+  log('');
+  log('將 obj1 設為 null...');
+  obj1 = null;
+  // obj1 對應的 WeakMap 條目會在 GC 時自動清除
+
+  log('obj1 已無引用，對應的快取會在 GC 時自動清除');
+  log('obj2 快取仍然存在: ' + cache.get(obj2));
+  log('');
+  log('WeakMap 不會阻止 key 被 GC 回收，');
+  log('適合用於：快取、DOM 元素資料、私有屬性');
+});`}
+/>
+
+## 記憶體除錯工具
+
+使用 Chrome DevTools 進行記憶體分析：
+
+1. **Memory 面板**：拍攝 Heap Snapshot 對比記憶體變化
+2. **Performance 面板**：錄製記憶體使用時間線，觀察是否持續上升
+3. **Allocation instrumentation**：追蹤記憶體分配的位置
+4. **Task Manager**（Shift + Esc）：快速查看各分頁的記憶體用量
+
+## 最佳實踐
+
+1. **及時清理**：元件卸載時清除計時器、事件監聽器、WebSocket 連線
+2. **使用 WeakMap/WeakSet**：儲存與物件關聯的附加資料
+3. **避免全域變數**：使用 `'use strict'` 模式
+4. **注意閉包**：確保閉包不會意外持有大型物件的引用
+5. **定期檢查**：在開發階段使用 DevTools Memory 面板監控記憶體

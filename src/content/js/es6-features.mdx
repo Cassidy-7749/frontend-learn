@@ -1,0 +1,333 @@
+# ES6+ 特性
+
+ES6（ECMAScript 2015）及後續版本為 JavaScript 帶來了大量的語法改進與新功能。這些特性讓程式碼更簡潔、更具表達力。
+
+## let 與 const
+
+`let` 和 `const` 取代了 `var`，提供區塊作用域：
+
+```js
+// const — 常量，不可重新賦值
+const PI = 3.14159;
+// PI = 3; // TypeError
+
+// 但物件的內容可以修改
+const user = { name: 'Alice' };
+user.name = 'Bob'; // ✓ 合法
+// user = {};       // ✗ TypeError
+
+// let — 可重新賦值，有區塊作用域
+let count = 0;
+count = 1; // ✓
+```
+
+<Callout type="tip" title="宣告變數的最佳實踐">
+優先使用 `const`，只有在需要重新賦值時才用 `let`，完全避免使用 `var`。這能讓程式碼意圖更明確、減少意外的重新賦值。
+</Callout>
+
+## 解構賦值（Destructuring）
+
+從陣列或物件中快速提取值：
+
+### 物件解構
+
+```js
+const user = { name: 'Alice', age: 25, role: 'developer' };
+
+// 基本解構
+const { name, age } = user;
+
+// 重新命名
+const { name: userName, age: userAge } = user;
+
+// 預設值
+const { name, country = 'Taiwan' } = user;
+
+// 巢狀解構
+const response = {
+  data: {
+    user: { id: 1, name: 'Alice' }
+  }
+};
+const { data: { user: { id } } } = response;
+
+// 函式參數解構
+function greet({ name, age = 0 }) {
+  return `Hi ${name}, you are ${age}`;
+}
+greet({ name: 'Bob' }); // "Hi Bob, you are 0"
+```
+
+### 陣列解構
+
+```js
+const colors = ['red', 'green', 'blue'];
+
+const [first, second] = colors; // first='red', second='green'
+const [, , third] = colors;     // 跳過前兩個，third='blue'
+
+// 交換變數
+let a = 1, b = 2;
+[a, b] = [b, a]; // a=2, b=1
+```
+
+## 展開運算子（Spread）與其餘參數（Rest）
+
+### 展開運算子 `...`
+
+```js
+// 陣列展開
+const arr1 = [1, 2, 3];
+const arr2 = [...arr1, 4, 5]; // [1, 2, 3, 4, 5]
+
+// 物件展開（淺拷貝）
+const base = { a: 1, b: 2 };
+const extended = { ...base, c: 3, b: 10 }; // { a: 1, b: 10, c: 3 }
+
+// 函式呼叫時展開
+Math.max(...arr1); // 3
+```
+
+### 其餘參數
+
+```js
+function sum(first, ...rest) {
+  return rest.reduce((total, n) => total + n, first);
+}
+sum(1, 2, 3, 4); // 10
+
+// 物件其餘屬性
+const { a, ...others } = { a: 1, b: 2, c: 3 };
+// a = 1, others = { b: 2, c: 3 }
+```
+
+## 箭頭函式（Arrow Functions）
+
+```js
+// 傳統函式
+function add(a, b) { return a + b; }
+
+// 箭頭函式
+const add = (a, b) => a + b;
+
+// 單一參數可省略括號
+const double = x => x * 2;
+
+// 回傳物件需用括號包裹
+const createUser = (name) => ({ name, createdAt: Date.now() });
+
+// 多行函式體需要大括號和 return
+const calculate = (a, b) => {
+  const sum = a + b;
+  const product = a * b;
+  return { sum, product };
+};
+```
+
+## 模板字串（Template Literals）
+
+```js
+const name = 'World';
+const greeting = `Hello, ${name}!`; // "Hello, World!"
+
+// 多行字串
+const html = `
+  <div>
+    <h1>${name}</h1>
+    <p>歡迎光臨</p>
+  </div>
+`;
+
+// 嵌入表達式
+const price = 100;
+const message = `總價：${price * 1.05} 元（含稅）`;
+
+// 標籤模板（Tagged Templates）
+function highlight(strings, ...values) {
+  return strings.reduce((result, str, i) => {
+    return result + str + (values[i] ? `<mark>${values[i]}</mark>` : '');
+  }, '');
+}
+const result = highlight`Hello ${name}, you have ${3} items`;
+```
+
+## Symbol、Map 與 Set
+
+### Symbol
+
+```js
+// 建立唯一的識別符
+const id = Symbol('id');
+const id2 = Symbol('id');
+console.log(id === id2); // false — 每個 Symbol 都是唯一的
+
+// 用作物件的屬性鍵
+const obj = {
+  [id]: 12345,
+  name: 'Alice'
+};
+console.log(obj[id]); // 12345
+// Symbol 屬性不會出現在 for...in 或 Object.keys() 中
+```
+
+### Map
+
+```js
+const map = new Map();
+
+// 任何類型都可作為 key
+map.set('name', 'Alice');
+map.set(42, 'number key');
+map.set(true, 'boolean key');
+
+const objKey = { id: 1 };
+map.set(objKey, 'object key');
+
+console.log(map.get('name'));  // 'Alice'
+console.log(map.size);        // 4
+console.log(map.has(42));     // true
+
+// 迭代
+for (const [key, value] of map) {
+  console.log(key, value);
+}
+```
+
+### Set
+
+```js
+const set = new Set([1, 2, 3, 3, 2]);
+console.log(set.size); // 3（自動去重複）
+
+set.add(4);
+set.delete(1);
+set.has(2); // true
+
+// 陣列去重複的簡潔寫法
+const unique = [...new Set([1, 1, 2, 3, 3])]; // [1, 2, 3]
+```
+
+## Optional Chaining 與 Nullish Coalescing
+
+### Optional Chaining `?.`
+
+安全存取深層屬性，避免 `TypeError`：
+
+```js
+const user = {
+  address: {
+    city: 'Taipei'
+  }
+};
+
+// 傳統寫法
+const zip = user && user.address && user.address.zip;
+
+// Optional chaining
+const zip2 = user?.address?.zip; // undefined（不會報錯）
+
+// 也可用於方法呼叫和陣列
+user.greet?.();        // 如果 greet 存在就呼叫
+const first = arr?.[0]; // 如果 arr 存在就取第一個元素
+```
+
+### Nullish Coalescing `??`
+
+只在值為 `null` 或 `undefined` 時提供預設值：
+
+```js
+const value = 0;
+
+// || 會把 0、''、false 當作 falsy
+console.log(value || 'default'); // 'default' ← 非預期
+
+// ?? 只在 null/undefined 時才用預設值
+console.log(value ?? 'default'); // 0 ✓
+console.log(null ?? 'default');  // 'default'
+console.log(undefined ?? 'default'); // 'default'
+console.log('' ?? 'default');    // '' ✓
+```
+
+<Callout type="warning" title="?? 與 || 的差異">
+`||` 在值為任何 falsy 值時（`0`、`''`、`false`、`null`、`undefined`、`NaN`）都會回傳右側。`??` 只在 `null` 或 `undefined` 時才回傳右側。當 `0` 或 `''` 是合法值時，應使用 `??`。
+</Callout>
+
+## 其他實用特性
+
+```js
+// 屬性簡寫
+const name = 'Alice';
+const age = 25;
+const user = { name, age }; // { name: 'Alice', age: 25 }
+
+// 計算屬性名
+const key = 'color';
+const obj = { [key]: 'red' }; // { color: 'red' }
+
+// 陣列方法
+[1,2,3].includes(2);          // true
+[1,2,3].find(x => x > 1);     // 2
+[1,2,3].findIndex(x => x > 1); // 1
+[1,[2,[3]]].flat(Infinity);    // [1, 2, 3]
+
+// Object 方法
+Object.entries({a:1, b:2});    // [['a',1], ['b',2]]
+Object.fromEntries([['a',1]]); // { a: 1 }
+Object.values({a:1, b:2});     // [1, 2]
+```
+
+## 互動範例
+
+<CodePlayground
+  title="ES6+ 特性實驗"
+  defaultJS={`// === 解構賦值 ===
+const person = { name: '小明', age: 28, city: '台北', job: '工程師' };
+const { name, age, country = '台灣' } = person;
+console.log(name, age, country);
+
+const [first, ...rest] = [10, 20, 30, 40];
+console.log('first:', first, 'rest:', rest);
+console.log('---');
+
+// === 展開與淺拷貝 ===
+const original = { a: 1, b: { c: 2 } };
+const copy = { ...original, d: 3 };
+console.log('展開複製:', copy);
+console.log('---');
+
+// === Map 與 Set ===
+const fruitCount = new Map();
+fruitCount.set('蘋果', 3);
+fruitCount.set('香蕉', 5);
+fruitCount.set('橘子', 2);
+console.log('水果數量:');
+for (const [fruit, count] of fruitCount) {
+  console.log('  ' + fruit + ': ' + count);
+}
+
+const nums = [1, 2, 2, 3, 3, 3, 4];
+const unique = [...new Set(nums)];
+console.log('去重複:', unique);
+console.log('---');
+
+// === Optional Chaining & Nullish Coalescing ===
+const data = {
+  user: {
+    profile: { bio: '前端工程師' }
+  }
+};
+
+console.log('存在的路徑:', data?.user?.profile?.bio);
+console.log('不存在的路徑:', data?.user?.settings?.theme);
+console.log('?? with 0:', 0 ?? '預設值');
+console.log('|| with 0:', 0 || '預設值');
+console.log('?? with null:', null ?? '預設值');
+console.log('---');
+
+// === 模板字串 ===
+const items = ['HTML', 'CSS', 'JavaScript'];
+const list = items.map((item, i) => \`\${i + 1}. \${item}\`).join('\\n');
+console.log('學習清單:\\n' + list);`}
+/>
+
+ES6+ 的這些特性已是現代 JavaScript 開發的基礎，接下來我們將深入非同步程式設計的核心 — Promise 與 async/await。

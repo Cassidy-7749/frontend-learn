@@ -1,0 +1,387 @@
+# HTML5 API
+
+HTML5 不只是新的標籤和屬性，它還帶來了許多強大的 JavaScript API，讓網頁應用程式可以做到過去只有原生應用才能實現的功能。
+
+## Web Storage
+
+Web Storage 提供了在瀏覽器端儲存資料的機制，比傳統的 Cookie 更加簡潔且容量更大。
+
+### localStorage vs sessionStorage
+
+| 特性 | localStorage | sessionStorage |
+|------|-------------|---------------|
+| 生命週期 | 永久保存（除非手動清除） | 分頁關閉後清除 |
+| 作用範圍 | 同源的所有分頁共享 | 僅限當前分頁 |
+| 容量 | 約 5-10 MB | 約 5-10 MB |
+| 用途 | 使用者偏好、快取資料 | 臨時表單資料、分頁狀態 |
+
+### 基本操作
+
+```js
+// 儲存資料
+localStorage.setItem('username', 'Alice');
+
+// 讀取資料
+const name = localStorage.getItem('username'); // 'Alice'
+
+// 刪除單筆資料
+localStorage.removeItem('username');
+
+// 清除所有資料
+localStorage.clear();
+
+// 取得資料筆數
+console.log(localStorage.length);
+
+// 取得第 n 筆的 key
+console.log(localStorage.key(0));
+```
+
+<Callout type="warning" title="注意">
+Web Storage 只能儲存字串。如果要儲存物件或陣列，需要使用 `JSON.stringify()` 轉換，讀取時用 `JSON.parse()` 還原。此外，不要在 Web Storage 中儲存敏感資訊（如密碼、Token），因為它沒有加密且可透過 JavaScript 存取。
+</Callout>
+
+### 監聽 Storage 變化
+
+當同源的其他分頁修改了 localStorage 時，可以透過 `storage` 事件來監聽：
+
+```js
+window.addEventListener('storage', (event) => {
+  console.log('Key:', event.key);
+  console.log('舊值:', event.oldValue);
+  console.log('新值:', event.newValue);
+  console.log('來源:', event.url);
+});
+```
+
+<CodePlayground
+  title="Web Storage 互動範例"
+  defaultHTML={`<div class="container">
+  <h2>備忘錄（localStorage）</h2>
+
+  <div class="input-group">
+    <input type="text" id="noteTitle" placeholder="標題">
+    <textarea id="noteContent" rows="3" placeholder="內容..."></textarea>
+    <button id="saveBtn">儲存備忘</button>
+  </div>
+
+  <div class="stats">
+    <span>已儲存: <strong id="count">0</strong> 筆</span>
+    <button id="clearBtn" class="btn-danger">清除全部</button>
+  </div>
+
+  <ul id="noteList"></ul>
+
+  <div class="theme-section">
+    <h3>主題偏好設定</h3>
+    <label>
+      <input type="checkbox" id="darkMode">
+      深色模式
+    </label>
+    <p class="hint">此設定會透過 localStorage 記住你的選擇</p>
+  </div>
+</div>`}
+  defaultCSS={`* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: sans-serif;
+  padding: 1rem;
+  transition: background 0.3s, color 0.3s;
+}
+body.dark { background: #1a1a2e; color: #e0e0e0; }
+
+.container { max-width: 500px; margin: 0 auto; }
+h2 { margin-bottom: 1rem; }
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+input[type="text"], textarea {
+  padding: 0.5rem;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+body.dark input, body.dark textarea {
+  background: #16213e;
+  color: #e0e0e0;
+  border-color: #444;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  background: #4a90d9;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+button:hover { background: #357abd; }
+.btn-danger { background: #e53935; }
+.btn-danger:hover { background: #c62828; }
+.btn-small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: #e53935;
+}
+
+.stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+body.dark .stats { background: #16213e; }
+
+ul { list-style: none; margin-bottom: 1.5rem; }
+li {
+  padding: 0.75rem;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+body.dark li { background: #16213e; border-color: #333; }
+
+li .note-info { flex: 1; }
+li .note-title { font-weight: 600; }
+li .note-body { font-size: 0.85rem; color: #777; margin-top: 0.25rem; }
+
+.theme-section {
+  padding-top: 1rem;
+  border-top: 1px solid #ddd;
+}
+h3 { margin-bottom: 0.5rem; }
+.hint { font-size: 0.8rem; color: #999; margin-top: 0.3rem; }`}
+  defaultJS={`const noteTitle = document.getElementById('noteTitle');
+const noteContent = document.getElementById('noteContent');
+const saveBtn = document.getElementById('saveBtn');
+const clearBtn = document.getElementById('clearBtn');
+const noteList = document.getElementById('noteList');
+const countEl = document.getElementById('count');
+const darkModeToggle = document.getElementById('darkMode');
+
+// 從 localStorage 讀取備忘錄
+function getNotes() {
+  const data = localStorage.getItem('myNotes');
+  return data ? JSON.parse(data) : [];
+}
+
+function saveNotes(notes) {
+  localStorage.setItem('myNotes', JSON.stringify(notes));
+}
+
+function renderNotes() {
+  const notes = getNotes();
+  countEl.textContent = notes.length;
+  noteList.innerHTML = '';
+
+  notes.forEach((note, index) => {
+    const li = document.createElement('li');
+    li.innerHTML =
+      '<div class="note-info">' +
+        '<div class="note-title">' + note.title + '</div>' +
+        '<div class="note-body">' + note.content + '</div>' +
+      '</div>' +
+      '<button class="btn-small" data-index="' + index + '">刪除</button>';
+    noteList.appendChild(li);
+  });
+
+  // 綁定刪除按鈕
+  noteList.querySelectorAll('.btn-small').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const notes = getNotes();
+      notes.splice(this.dataset.index, 1);
+      saveNotes(notes);
+      renderNotes();
+    });
+  });
+}
+
+saveBtn.addEventListener('click', () => {
+  const title = noteTitle.value.trim();
+  const content = noteContent.value.trim();
+  if (!title) return alert('請輸入標題');
+
+  const notes = getNotes();
+  notes.unshift({ title, content, time: new Date().toLocaleString() });
+  saveNotes(notes);
+  noteTitle.value = '';
+  noteContent.value = '';
+  renderNotes();
+});
+
+clearBtn.addEventListener('click', () => {
+  if (confirm('確定要清除所有備忘錄嗎？')) {
+    localStorage.removeItem('myNotes');
+    renderNotes();
+  }
+});
+
+// 深色模式偏好
+const isDark = localStorage.getItem('darkMode') === 'true';
+if (isDark) {
+  document.body.classList.add('dark');
+  darkModeToggle.checked = true;
+}
+
+darkModeToggle.addEventListener('change', function() {
+  document.body.classList.toggle('dark', this.checked);
+  localStorage.setItem('darkMode', this.checked);
+});
+
+// 初始化
+renderNotes();`}
+/>
+
+## Canvas 基礎
+
+`<canvas>` 元素提供了一個可以透過 JavaScript 繪製圖形的畫布。它常用於遊戲、圖表和圖片處理。
+
+### 基本使用
+
+```html
+<canvas id="myCanvas" width="400" height="300"></canvas>
+```
+
+```js
+const canvas = document.getElementById('myCanvas');
+const ctx = canvas.getContext('2d');
+
+// 繪製矩形
+ctx.fillStyle = '#4a90d9';
+ctx.fillRect(10, 10, 150, 100);
+
+// 繪製線條
+ctx.beginPath();
+ctx.moveTo(200, 50);
+ctx.lineTo(350, 50);
+ctx.lineTo(275, 150);
+ctx.closePath();
+ctx.strokeStyle = '#e53935';
+ctx.lineWidth = 3;
+ctx.stroke();
+
+// 繪製文字
+ctx.font = '24px sans-serif';
+ctx.fillStyle = '#333';
+ctx.fillText('Hello Canvas!', 10, 200);
+
+// 繪製圓形
+ctx.beginPath();
+ctx.arc(300, 200, 50, 0, Math.PI * 2);
+ctx.fillStyle = '#4caf50';
+ctx.fill();
+```
+
+<Callout type="info" title="資訊">
+Canvas 繪製的是像素（raster），一旦繪製完成就變成了圖片的一部分。如果需要可縮放的向量圖形，考慮使用 SVG。Canvas 適合頻繁重繪的場景（如動畫、遊戲），SVG 適合靜態或互動性圖形（如圖表、圖示）。
+</Callout>
+
+## Geolocation API
+
+Geolocation API 讓網頁可以取得使用者的地理位置。使用前必須取得使用者的同意。
+
+### 取得當前位置
+
+```js
+if ('geolocation' in navigator) {
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      console.log('緯度:', position.coords.latitude);
+      console.log('經度:', position.coords.longitude);
+      console.log('精確度:', position.coords.accuracy, '公尺');
+    },
+    (error) => {
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          console.log('使用者拒絕了定位請求');
+          break;
+        case error.POSITION_UNAVAILABLE:
+          console.log('無法取得位置資訊');
+          break;
+        case error.TIMEOUT:
+          console.log('請求超時');
+          break;
+      }
+    },
+    {
+      enableHighAccuracy: true,  // 高精確度
+      timeout: 5000,             // 超時時間（毫秒）
+      maximumAge: 0              // 不使用快取
+    }
+  );
+}
+```
+
+### 持續追蹤位置
+
+```js
+const watchId = navigator.geolocation.watchPosition(
+  (position) => {
+    // 位置更新時觸發
+    updateMap(position.coords);
+  }
+);
+
+// 停止追蹤
+navigator.geolocation.clearWatch(watchId);
+```
+
+## 其他實用的 HTML5 API
+
+### Drag and Drop API
+
+```js
+// 讓元素可拖曳
+element.draggable = true;
+
+element.addEventListener('dragstart', (e) => {
+  e.dataTransfer.setData('text/plain', e.target.id);
+});
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault(); // 必須阻止預設行為才能 drop
+});
+
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const id = e.dataTransfer.getData('text/plain');
+  dropZone.appendChild(document.getElementById(id));
+});
+```
+
+### History API
+
+```js
+// 新增歷史記錄
+history.pushState({ page: 2 }, '頁面 2', '/page/2');
+
+// 替換當前記錄
+history.replaceState({ page: 3 }, '頁面 3', '/page/3');
+
+// 監聽上一頁/下一頁
+window.addEventListener('popstate', (event) => {
+  console.log('狀態:', event.state);
+});
+```
+
+<Callout type="tip" title="提示">
+現代前端框架（React Router、Vue Router 等）底層都使用了 History API 來實現客戶端路由。了解原理有助於你更好地理解框架的運作機制。
+</Callout>
+
+## 總結
+
+- **Web Storage** 提供了簡單的鍵值對儲存機制，適合儲存使用者偏好和非敏感資料。
+- **Canvas** 是強大的 2D 繪圖工具，適合遊戲、圖表和動畫。
+- **Geolocation** 讓網頁可以取得使用者位置，但需要使用者授權。
+- HTML5 API 讓網頁越來越接近原生應用的能力，善加利用可以大幅提升使用者體驗。

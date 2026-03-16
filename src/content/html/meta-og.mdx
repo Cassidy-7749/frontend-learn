@@ -1,0 +1,433 @@
+# Meta 標籤與 Open Graph
+
+Meta 標籤提供了關於網頁的「元資訊」，雖然使用者在頁面上看不到它們，但對搜尋引擎、社群媒體平台和瀏覽器來說，這些資訊至關重要。
+
+## 常用 Meta 標籤
+
+### 基本 Meta 標籤
+
+```html
+<head>
+  <!-- 字元編碼 -->
+  <meta charset="UTF-8">
+
+  <!-- 視窗設定（RWD 必備） -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+  <!-- 頁面描述（影響 SEO） -->
+  <meta name="description"
+        content="學習 HTML5 語意化標籤的使用方式，提升網頁可讀性與 SEO 表現。">
+
+  <!-- 關鍵字（目前對 Google 排名幾乎沒有影響） -->
+  <meta name="keywords" content="HTML, 語意化, 前端開發">
+
+  <!-- 作者 -->
+  <meta name="author" content="Alice Chen">
+
+  <!-- 控制搜尋引擎行為 -->
+  <meta name="robots" content="index, follow">
+
+  <!-- 頁面標題 -->
+  <title>HTML5 語意化指南 | My Blog</title>
+</head>
+```
+
+### robots meta 標籤
+
+`robots` 標籤控制搜尋引擎爬蟲的行為：
+
+| 指令 | 說明 |
+|------|------|
+| `index` | 允許索引此頁面 |
+| `noindex` | 不要索引此頁面 |
+| `follow` | 追蹤頁面上的連結 |
+| `nofollow` | 不要追蹤頁面上的連結 |
+| `noarchive` | 不要顯示快取版本 |
+| `nosnippet` | 不要在搜尋結果中顯示摘要 |
+| `max-snippet:100` | 限制摘要最多 100 個字元 |
+
+```html
+<!-- 不索引也不追蹤（常用於私人頁面） -->
+<meta name="robots" content="noindex, nofollow">
+
+<!-- 針對特定搜尋引擎 -->
+<meta name="googlebot" content="noindex">
+```
+
+### 其他實用的 Meta 標籤
+
+```html
+<!-- 主題顏色（影響瀏覽器 UI） -->
+<meta name="theme-color" content="#1565c0">
+
+<!-- 為 iOS Safari 設定 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent">
+
+<!-- 防止自動偵測電話號碼 -->
+<meta name="format-detection" content="telephone=no">
+
+<!-- 指定 Canonical URL -->
+<link rel="canonical" href="https://example.com/article">
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+```
+
+<Callout type="info" title="資訊">
+`<meta name="viewport">` 是響應式設計的必要標籤。沒有它，行動裝置會以桌面寬度來渲染頁面，然後縮小顯示，導致文字過小、操作困難。`width=device-width` 讓頁面寬度等於裝置寬度，`initial-scale=1.0` 設定初始縮放比例。
+</Callout>
+
+## Open Graph 協議
+
+Open Graph（OG）是由 Facebook 提出的協議，用來控制網頁在社群媒體上分享時的預覽樣式。幾乎所有主要的社群平台都支援 Open Graph。
+
+### 基本 OG 標籤
+
+```html
+<!-- 基本的 Open Graph 標籤 -->
+<meta property="og:title" content="HTML5 語意化標籤完整指南">
+<meta property="og:description"
+      content="深入了解 HTML5 語意化標籤的使用方式，提升網頁可讀性與 SEO。">
+<meta property="og:image"
+      content="https://example.com/images/html5-guide.jpg">
+<meta property="og:url" content="https://example.com/html5-guide">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="My Blog">
+<meta property="og:locale" content="zh_TW">
+```
+
+### OG 類型（og:type）
+
+常見的 OG 類型包括：
+
+- `website` — 一般網站（預設值）
+- `article` — 文章
+- `profile` — 個人頁面
+- `book` — 書籍
+- `music.song` — 音樂
+- `video.movie` — 影片
+
+### 文章類型的額外標籤
+
+```html
+<meta property="og:type" content="article">
+<meta property="article:published_time"
+      content="2025-01-15T08:00:00+08:00">
+<meta property="article:modified_time"
+      content="2025-03-01T10:00:00+08:00">
+<meta property="article:author"
+      content="https://example.com/author/alice">
+<meta property="article:section" content="Technology">
+<meta property="article:tag" content="HTML">
+<meta property="article:tag" content="Frontend">
+```
+
+### OG 圖片的最佳實踐
+
+```html
+<!-- 提供完整的圖片資訊 -->
+<meta property="og:image"
+      content="https://example.com/images/cover.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt"
+      content="HTML5 語意化標籤示意圖">
+<meta property="og:image:type" content="image/jpeg">
+```
+
+<Callout type="tip" title="提示">
+OG 圖片的建議尺寸為 1200 x 630 像素（1.91:1 比例）。這個尺寸在 Facebook、LinkedIn 和大部分平台上都能完美顯示。圖片檔案大小建議不超過 8 MB，並使用 HTTPS URL。
+</Callout>
+
+## Twitter Card
+
+Twitter（現為 X）有自己的 meta 標籤協議，稱為 Twitter Card。如果沒有設定 Twitter Card 標籤，Twitter 會回退使用 Open Graph 標籤。
+
+### Summary Card
+
+```html
+<!-- 基本摘要卡片 -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:site" content="@mysite">
+<meta name="twitter:creator" content="@alice">
+<meta name="twitter:title" content="HTML5 語意化標籤完整指南">
+<meta name="twitter:description"
+      content="深入了解 HTML5 語意化標籤的使用方式。">
+<meta name="twitter:image"
+      content="https://example.com/images/cover.jpg">
+```
+
+### Summary with Large Image
+
+```html
+<!-- 大圖摘要卡片（更醒目） -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="HTML5 語意化標籤完整指南">
+<meta name="twitter:description"
+      content="深入了解 HTML5 語意化標籤的使用方式。">
+<meta name="twitter:image"
+      content="https://example.com/images/cover-large.jpg">
+<meta name="twitter:image:alt"
+      content="HTML5 語意化標籤結構圖">
+```
+
+### Twitter Card 類型
+
+| 類型 | 說明 | 圖片建議尺寸 |
+|------|------|-------------|
+| `summary` | 小圖 + 標題 + 描述 | 144 x 144 px（最小） |
+| `summary_large_image` | 大圖 + 標題 + 描述 | 1200 x 628 px |
+| `player` | 影片或音訊播放器 | 依內容而定 |
+| `app` | 應用程式下載卡片 | 依平台而定 |
+
+## 完整範例
+
+<CodePlayground
+  title="完整的 Meta 與 OG 標籤範例"
+  defaultHTML={`<!-- 以下展示一個完整的 <head> 設定 -->
+<div class="head-preview">
+  <h2>完整的 &lt;head&gt; Meta 標籤範本</h2>
+
+  <div class="code-block">
+    <pre><code>&lt;head&gt;
+  &lt;!-- 基本設定 --&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;meta name="viewport"
+    content="width=device-width, initial-scale=1.0"&gt;
+  &lt;title&gt;HTML5 語意化指南 | My Blog&lt;/title&gt;
+  &lt;meta name="description"
+    content="深入了解 HTML5 語意化標籤..."&gt;
+  &lt;meta name="author" content="Alice Chen"&gt;
+  &lt;meta name="robots" content="index, follow"&gt;
+  &lt;meta name="theme-color" content="#1565c0"&gt;
+  &lt;link rel="canonical"
+    href="https://example.com/html5-guide"&gt;
+
+  &lt;!-- Open Graph --&gt;
+  &lt;meta property="og:type" content="article"&gt;
+  &lt;meta property="og:title"
+    content="HTML5 語意化標籤完整指南"&gt;
+  &lt;meta property="og:description"
+    content="深入了解 HTML5 語意化標籤..."&gt;
+  &lt;meta property="og:image"
+    content="https://example.com/cover.jpg"&gt;
+  &lt;meta property="og:image:width" content="1200"&gt;
+  &lt;meta property="og:image:height" content="630"&gt;
+  &lt;meta property="og:url"
+    content="https://example.com/html5-guide"&gt;
+  &lt;meta property="og:site_name" content="My Blog"&gt;
+  &lt;meta property="og:locale" content="zh_TW"&gt;
+
+  &lt;!-- Twitter Card --&gt;
+  &lt;meta name="twitter:card"
+    content="summary_large_image"&gt;
+  &lt;meta name="twitter:site" content="@myblog"&gt;
+  &lt;meta name="twitter:title"
+    content="HTML5 語意化標籤完整指南"&gt;
+  &lt;meta name="twitter:description"
+    content="深入了解 HTML5 語意化標籤..."&gt;
+  &lt;meta name="twitter:image"
+    content="https://example.com/cover.jpg"&gt;
+
+  &lt;!-- Favicon --&gt;
+  &lt;link rel="icon" type="image/svg+xml"
+    href="/favicon.svg"&gt;
+  &lt;link rel="apple-touch-icon"
+    href="/apple-touch-icon.png"&gt;
+&lt;/head&gt;</code></pre>
+  </div>
+
+  <h2>社群分享預覽模擬</h2>
+
+  <div class="preview-cards">
+    <div class="preview-card facebook">
+      <div class="platform-label">Facebook</div>
+      <div class="card-image">
+        <div class="placeholder-img">1200 x 630</div>
+      </div>
+      <div class="card-body">
+        <div class="card-site">example.com</div>
+        <div class="card-title">
+          HTML5 語意化標籤完整指南
+        </div>
+        <div class="card-desc">
+          深入了解 HTML5 語意化標籤的使用方式，
+          提升網頁可讀性與 SEO 表現。
+        </div>
+      </div>
+    </div>
+
+    <div class="preview-card twitter">
+      <div class="platform-label">Twitter / X</div>
+      <div class="card-image">
+        <div class="placeholder-img">1200 x 628</div>
+      </div>
+      <div class="card-body">
+        <div class="card-title">
+          HTML5 語意化標籤完整指南
+        </div>
+        <div class="card-desc">
+          深入了解 HTML5 語意化標籤的使用方式，
+          提升網頁可讀性與 SEO 表現。
+        </div>
+        <div class="card-site">example.com</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Meta 標籤檢查工具</h2>
+  <ul class="tools-list">
+    <li>
+      <strong>Facebook Sharing Debugger</strong>
+      — 測試 OG 標籤
+    </li>
+    <li>
+      <strong>Twitter Card Validator</strong>
+      — 測試 Twitter Card
+    </li>
+    <li>
+      <strong>LinkedIn Post Inspector</strong>
+      — 測試 LinkedIn 預覽
+    </li>
+    <li>
+      <strong>metatags.io</strong>
+      — 一站式預覽工具
+    </li>
+  </ul>
+</div>`}
+  defaultCSS={`* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: sans-serif; padding: 1rem; background: #f5f5f5; }
+
+.head-preview { max-width: 650px; margin: 0 auto; }
+h2 { margin: 1.5rem 0 1rem; color: #333; font-size: 1.15rem; }
+h2:first-child { margin-top: 0; }
+
+.code-block {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.code-block pre { margin: 0; }
+.code-block code { font-family: 'Consolas', monospace; }
+
+.preview-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.preview-card {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.platform-label {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+}
+.facebook .platform-label { background: #1877f2; }
+.twitter .platform-label { background: #1da1f2; }
+
+.card-image { background: #e0e0e0; }
+.placeholder-img {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.card-body { padding: 0.75rem; }
+.card-site {
+  font-size: 0.75rem;
+  color: #999;
+  text-transform: uppercase;
+}
+.card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin: 0.25rem 0;
+  color: #333;
+}
+.card-desc {
+  font-size: 0.85rem;
+  color: #777;
+  line-height: 1.4;
+}
+
+.tools-list {
+  list-style: none;
+  padding: 0;
+}
+.tools-list li {
+  padding: 0.6rem 0.75rem;
+  background: white;
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
+  border-left: 3px solid #1565c0;
+  font-size: 0.9rem;
+}`}
+  defaultJS={``}
+/>
+
+## 動態設定 Meta 標籤
+
+在單頁應用（SPA）中，需要在路由切換時動態更新 meta 標籤：
+
+### 原生 JavaScript
+
+```js
+// 更新 title
+document.title = '新的頁面標題 | My Blog';
+
+// 更新或新增 meta 標籤
+function setMeta(name, content, isProperty = false) {
+  const attr = isProperty ? 'property' : 'name';
+  let meta = document.querySelector(
+    `meta[${attr}="${name}"]`
+  );
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute(attr, name);
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', content);
+}
+
+setMeta('description', '新的頁面描述');
+setMeta('og:title', '新的 OG 標題', true);
+setMeta('og:image', 'https://example.com/new-image.jpg', true);
+```
+
+### 框架解決方案
+
+在實際專案中，通常使用框架提供的工具：
+
+- **React** — React Helmet、Next.js 的 `<Head>` 或 Metadata API
+- **Vue** — @unhead/vue、Nuxt.js 的 `useHead()`
+- **Svelte** — `<svelte:head>`
+- **Angular** — Meta 和 Title 服務
+
+<Callout type="warning" title="注意">
+社群媒體爬蟲（如 Facebook 和 Twitter 的爬蟲）通常不會執行 JavaScript。因此，如果你的 meta 標籤是透過客戶端 JavaScript 動態設定的，社群分享預覽可能無法正確顯示。務必使用 SSR 或 SSG 來確保 meta 標籤在 HTML 原始碼中就已存在。
+</Callout>
+
+## 總結
+
+- **基本 meta 標籤**（charset、viewport、description）是每個頁面都必須有的。
+- **Open Graph** 控制了網頁在 Facebook、LinkedIn 等平台的分享預覽，`og:title`、`og:description`、`og:image` 是最關鍵的三個標籤。
+- **Twitter Card** 補充了 Twitter 上的分享樣式，會自動回退到 OG 標籤。
+- OG 圖片建議使用 **1200 x 630 px** 的尺寸。
+- 在 SPA 中，使用 **SSR/SSG** 來確保社群爬蟲能正確讀取 meta 標籤。
+- 使用各平台的驗證工具來確保你的 meta 標籤設定正確。

@@ -1,0 +1,182 @@
+# 選擇器與優先級
+
+CSS 選擇器是用來「選取」HTML 元素的語法規則，而優先級（Specificity）則決定了當多個規則同時匹配同一個元素時，哪一條規則會被套用。理解這兩個概念是撰寫可維護 CSS 的基礎。
+
+## CSS 選擇器種類
+
+### 基本選擇器
+
+| 選擇器 | 語法 | 說明 |
+|--------|------|------|
+| 元素選擇器 | `p` | 選取所有 `<p>` 元素 |
+| Class 選擇器 | `.classname` | 選取帶有該 class 的元素 |
+| ID 選擇器 | `#idname` | 選取帶有該 ID 的元素 |
+| 通用選擇器 | `*` | 選取所有元素 |
+
+### 屬性選擇器
+
+屬性選擇器允許我們根據元素的屬性來選取：
+
+```css
+/* 具有 title 屬性的元素 */
+[title] { color: blue; }
+
+/* href 完全等於指定值 */
+a[href="https://example.com"] { color: red; }
+
+/* href 以 https 開頭 */
+a[href^="https"] { color: green; }
+
+/* href 以 .pdf 結尾 */
+a[href$=".pdf"] { color: orange; }
+
+/* href 包含 example */
+a[href*="example"] { color: purple; }
+```
+
+### 偽類選擇器（Pseudo-classes）
+
+偽類用於選取元素的特定狀態：
+
+```css
+a:hover { color: red; }          /* 滑鼠懸停 */
+a:visited { color: purple; }     /* 已訪問連結 */
+li:first-child { font-weight: bold; }  /* 第一個子元素 */
+li:nth-child(2n) { background: #f0f0f0; } /* 偶數項 */
+input:focus { border-color: blue; }    /* 取得焦點 */
+```
+
+### 偽元素選擇器（Pseudo-elements）
+
+偽元素用於選取元素的某個部分或產生虛擬內容：
+
+```css
+p::first-line { font-weight: bold; }   /* 第一行 */
+p::first-letter { font-size: 2em; }    /* 首字母 */
+.item::before { content: "→ "; }       /* 前方插入 */
+.item::after { content: " ←"; }        /* 後方插入 */
+::selection { background: yellow; }     /* 選取文字 */
+```
+
+### 組合選擇器
+
+```css
+/* 後代選擇器（空格） */
+div p { color: blue; }
+
+/* 子選擇器（>） */
+div > p { color: red; }
+
+/* 相鄰兄弟選擇器（+） */
+h2 + p { margin-top: 0; }
+
+/* 通用兄弟選擇器（~） */
+h2 ~ p { color: gray; }
+```
+
+## 優先級計算
+
+CSS 優先級使用四個層級的計數系統來決定哪條規則勝出：
+
+| 層級 | 說明 | 範例 |
+|------|------|------|
+| (1,0,0,0) | 行內樣式 | `style="color:red"` |
+| (0,1,0,0) | ID 選擇器 | `#header` |
+| (0,0,1,0) | Class、屬性、偽類 | `.nav`, `[type]`, `:hover` |
+| (0,0,0,1) | 元素、偽元素 | `div`, `::before` |
+
+<Callout type="tip" title="優先級計算技巧">
+通用選擇器 `*`、組合符號 `>`、`+`、`~` 以及 `:where()` 偽類不計算優先級。而 `:is()` 和 `:not()` 的優先級等同於其參數中最高的選擇器。
+</Callout>
+
+### 計算範例
+
+```css
+/* (0,0,0,1) — 一個元素選擇器 */
+p { color: black; }
+
+/* (0,0,1,1) — 一個 class + 一個元素 */
+p.intro { color: blue; }
+
+/* (0,1,1,1) — 一個 ID + 一個 class + 一個元素 */
+div#main .intro p { color: red; }
+
+/* (0,1,0,0) — 一個 ID */
+#main { color: green; }
+```
+
+## !important 與覆蓋規則
+
+`!important` 會強制覆蓋所有其他優先級規則，但應謹慎使用：
+
+```css
+p { color: red !important; }  /* 這會贏過所有非 !important 的規則 */
+```
+
+<Callout type="warning" title="避免濫用 !important">
+過度使用 `!important` 會讓 CSS 難以維護和除錯。當你發現自己需要用 `!important` 時，通常代表選擇器的結構需要重新設計。唯一合理的使用場景是覆蓋第三方樣式庫。
+</Callout>
+
+### 覆蓋優先級順序（由低到高）
+
+1. 瀏覽器預設樣式
+2. 外部 / 內部樣式表中的一般規則
+3. 較高優先級的選擇器
+4. 行內樣式 `style=""`
+5. `!important` 標記
+6. `!important` + 更高優先級的選擇器
+
+## 互動範例
+
+<CodePlayground
+  title="選擇器優先級比較"
+  defaultHTML={`<div id="container">
+  <p class="text special" id="unique">
+    這段文字會是什麼顏色？
+  </p>
+  <p class="text">
+    這段文字受到不同選擇器影響
+  </p>
+  <p>
+    這段只有元素選擇器
+  </p>
+</div>`}
+  defaultCSS={`/* (0,0,0,1) 元素選擇器 */
+p {
+  color: gray;
+  font-size: 18px;
+  padding: 8px;
+  margin: 4px 0;
+  border-left: 4px solid transparent;
+}
+
+/* (0,0,1,0) Class 選擇器 — 贏過元素 */
+.text {
+  color: blue;
+  border-left-color: blue;
+}
+
+/* (0,0,2,0) 兩個 Class — 贏過一個 class */
+.text.special {
+  color: green;
+  border-left-color: green;
+}
+
+/* (0,1,0,0) ID 選擇器 — 贏過任意數量的 class */
+#unique {
+  color: red;
+  border-left-color: red;
+  font-weight: bold;
+}
+
+/* 試試取消下面的註解看看 !important 的效果 */
+/* .text { color: purple !important; } */`}
+  defaultJS={``}
+/>
+
+## 最佳實踐
+
+1. **保持低優先級**：盡量使用 class 選擇器，避免 ID 選擇器與行內樣式
+2. **避免巢狀過深**：`div > ul > li > a.link` 這樣的選擇器難以維護
+3. **善用 BEM 命名**：透過命名規範來避免優先級戰爭
+4. **利用 CSS 層疊層（Cascade Layers）**：`@layer` 可以更好地管理優先級

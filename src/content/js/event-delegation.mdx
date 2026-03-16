@@ -1,0 +1,370 @@
+# 事件委派與冒泡
+
+瀏覽器的事件系統包含捕獲、目標、冒泡三個階段。理解這個機制後，就能運用「事件委派」模式來高效處理大量元素的事件。
+
+## 事件傳播的三個階段
+
+當使用者點擊一個元素時，事件會經歷三個階段：
+
+```
+1. 捕獲階段（Capture Phase）：從 window → document → html → body → ... → 目標的父元素
+2. 目標階段（Target Phase）：到達被點擊的目標元素
+3. 冒泡階段（Bubble Phase）：從目標元素 → ... → body → html → document → window
+```
+
+```js
+// addEventListener 第三個參數控制在哪個階段觸發
+element.addEventListener('click', handler, false); // 冒泡階段（預設）
+element.addEventListener('click', handler, true);  // 捕獲階段
+
+// 也可以用物件配置
+element.addEventListener('click', handler, {
+  capture: true,   // 是否在捕獲階段觸發
+  once: true,       // 是否只觸發一次
+  passive: true     // 是否不會呼叫 preventDefault（效能優化）
+});
+```
+
+<Callout type="tip" title="大多數情況使用冒泡即可">
+99% 的場景只需要冒泡階段的事件處理。捕獲階段主要用在需要「在事件到達目標之前攔截」的特殊場景，例如全域的事件日誌記錄。
+</Callout>
+
+## event.target vs event.currentTarget
+
+這是事件處理中最重要的區別之一：
+
+```html
+<div id="parent">
+  <button id="child">點我</button>
+</div>
+```
+
+```js
+const parent = document.querySelector('#parent');
+
+parent.addEventListener('click', (event) => {
+  // target — 實際被點擊的元素（觸發事件的源頭）
+  console.log('target:', event.target.id);
+  // 如果點擊按鈕 → 'child'
+  // 如果點擊 div 空白處 → 'parent'
+
+  // currentTarget — 綁定事件監聽器的元素
+  console.log('currentTarget:', event.currentTarget.id);
+  // 永遠是 'parent'（因為監聽器綁在 parent 上）
+});
+```
+
+## event.stopPropagation()
+
+阻止事件繼續傳播（捕獲或冒泡都會被中斷）：
+
+```js
+const outer = document.querySelector('#outer');
+const inner = document.querySelector('#inner');
+
+outer.addEventListener('click', () => {
+  console.log('外層被點擊');
+});
+
+inner.addEventListener('click', (e) => {
+  e.stopPropagation(); // 阻止冒泡
+  console.log('內層被點擊');
+  // '外層被點擊' 不會被觸發
+});
+```
+
+### stopPropagation vs stopImmediatePropagation
+
+```js
+const btn = document.querySelector('#btn');
+
+btn.addEventListener('click', (e) => {
+  console.log('處理器 A');
+  e.stopImmediatePropagation(); // 阻止傳播 + 阻止同元素的其他處理器
+});
+
+btn.addEventListener('click', () => {
+  console.log('處理器 B'); // 不會執行！
+});
+```
+
+<Callout type="warning" title="謹慎使用 stopPropagation">
+過度使用 `stopPropagation()` 會破壞事件委派模式，讓程式碼難以維護。例如，如果你在某處阻止了冒泡，全域的點擊監聽器（如關閉下拉選單）就可能失效。建議用條件判斷取代阻止傳播。
+</Callout>
+
+## event.preventDefault()
+
+阻止瀏覽器的預設行為，但不影響事件傳播：
+
+```js
+// 阻止表單提交（避免頁面重新載入）
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  // 自行處理表單提交（例如用 fetch）
+});
+
+// 阻止連結導航
+link.addEventListener('click', (e) => {
+  e.preventDefault();
+  // 自行處理導航邏輯
+});
+
+// 阻止右鍵選單
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  // 顯示自訂選單
+});
+
+// 阻止拖曳時的預設行為
+dropzone.addEventListener('dragover', (e) => {
+  e.preventDefault(); // 必須阻止才能接收 drop 事件
+});
+```
+
+## 事件委派模式（Event Delegation）
+
+事件委派利用冒泡機制，將事件監聽器綁在父元素上，而非每個子元素各綁一個：
+
+### 為什麼需要事件委派？
+
+```js
+// ✗ 不好的做法 — 為每個元素綁定事件
+const buttons = document.querySelectorAll('.item');
+buttons.forEach(btn => {
+  btn.addEventListener('click', handleClick);
+});
+// 問題：
+// 1. 100 個元素 = 100 個事件監聽器 = 更多記憶體
+// 2. 動態新增的元素不會有事件監聽器
+// 3. 需要手動清理避免記憶體洩漏
+```
+
+```js
+// ✓ 事件委派 — 只需一個事件監聽器
+const container = document.querySelector('.container');
+container.addEventListener('click', (e) => {
+  // 用 target 判斷實際被點擊的元素
+  const item = e.target.closest('.item');
+  if (item) {
+    handleClick(item);
+  }
+});
+// 優點：
+// 1. 只有 1 個事件監聽器
+// 2. 動態新增的元素自動有效
+// 3. 不需要清理
+```
+
+### closest() 方法
+
+`closest()` 是事件委派的好搭檔，從當前元素向上查找匹配的祖先元素：
+
+```js
+// HTML: <div class="card"><span class="icon">★</span> 內容</div>
+container.addEventListener('click', (e) => {
+  // 即使點擊的是 span.icon，也能找到 .card
+  const card = e.target.closest('.card');
+  if (card) {
+    console.log('點擊了卡片');
+  }
+});
+```
+
+### 實際應用場景
+
+```js
+// 1. 動態列表
+const todoList = document.querySelector('#todo-list');
+todoList.addEventListener('click', (e) => {
+  const deleteBtn = e.target.closest('[data-action="delete"]');
+  if (deleteBtn) {
+    const item = deleteBtn.closest('.todo-item');
+    item.remove();
+    return;
+  }
+
+  const toggleBtn = e.target.closest('[data-action="toggle"]');
+  if (toggleBtn) {
+    const item = toggleBtn.closest('.todo-item');
+    item.classList.toggle('completed');
+  }
+});
+
+// 2. 表格排序
+const table = document.querySelector('#data-table');
+table.querySelector('thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (th) {
+    const column = th.dataset.sort;
+    sortTable(column);
+  }
+});
+
+// 3. 選單切換
+document.addEventListener('click', (e) => {
+  const menuBtn = e.target.closest('.menu-toggle');
+  if (menuBtn) {
+    const menu = document.querySelector(menuBtn.dataset.target);
+    menu.classList.toggle('open');
+    return;
+  }
+  // 點擊其他地方關閉所有選單
+  document.querySelectorAll('.menu.open').forEach(m => {
+    m.classList.remove('open');
+  });
+});
+```
+
+<Callout type="tip" title="事件委派的適用時機">
+當你需要處理以下情境時，優先考慮事件委派：（1）大量同類元素需要相同的事件處理、（2）元素會動態新增或移除、（3）希望減少記憶體使用。
+</Callout>
+
+## 常見的事件類型
+
+```js
+// 滑鼠事件
+element.addEventListener('click', handler);
+element.addEventListener('dblclick', handler);
+element.addEventListener('mouseenter', handler); // 不冒泡
+element.addEventListener('mouseleave', handler); // 不冒泡
+element.addEventListener('mouseover', handler);  // 會冒泡
+element.addEventListener('mouseout', handler);   // 會冒泡
+
+// 鍵盤事件
+element.addEventListener('keydown', handler);
+element.addEventListener('keyup', handler);
+
+// 表單事件
+element.addEventListener('input', handler);   // 即時觸發
+element.addEventListener('change', handler);  // 失去焦點時觸發
+element.addEventListener('submit', handler);
+element.addEventListener('focus', handler);   // 不冒泡
+element.addEventListener('blur', handler);    // 不冒泡
+element.addEventListener('focusin', handler); // 會冒泡
+element.addEventListener('focusout', handler);// 會冒泡
+```
+
+## 互動範例
+
+<CodePlayground
+  title="事件委派實驗"
+  defaultHTML={`<div id="app">
+  <h3>顏色選擇器（事件委派）</h3>
+  <div id="color-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px;">
+  </div>
+  <p>選擇的顏色：<span id="selected" style="font-weight: bold;">無</span></p>
+  <button id="add-color" style="padding: 6px 12px; cursor: pointer; margin-bottom: 16px;">新增隨機顏色</button>
+
+  <hr style="margin: 16px 0;">
+
+  <h3>事件傳播演示</h3>
+  <div id="outer" style="padding: 20px; background: #3498db; color: white; border-radius: 8px;">
+    外層 (outer)
+    <div id="middle" style="padding: 20px; background: #2ecc71; margin-top: 8px; border-radius: 6px;">
+      中層 (middle)
+      <div id="inner" style="padding: 20px; background: #e74c3c; margin-top: 8px; border-radius: 4px; cursor: pointer;">
+        內層 (inner) — 點我！
+      </div>
+    </div>
+  </div>
+  <div id="log" style="margin-top: 12px; padding: 10px; background: #f5f5f5; border-radius: 4px; font-family: monospace; font-size: 13px; min-height: 60px;"></div>
+</div>`}
+  defaultCSS={`.color-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+}
+.color-cell:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+.color-cell.active {
+  border-color: #333;
+  transform: scale(1.15);
+}`}
+  defaultJS={`const grid = document.querySelector('#color-grid');
+const selectedEl = document.querySelector('#selected');
+const addBtn = document.querySelector('#add-color');
+const logEl = document.querySelector('#log');
+
+// 初始顏色
+const colors = [
+  '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
+  '#1abc9c', '#e67e22', '#34495e', '#e91e63', '#00bcd4'
+];
+
+// 建立顏色格子
+colors.forEach(color => {
+  const cell = document.createElement('div');
+  cell.className = 'color-cell';
+  cell.style.backgroundColor = color;
+  cell.dataset.color = color;
+  grid.appendChild(cell);
+});
+
+// === 事件委派 — 只在父元素綁定一個監聽器 ===
+grid.addEventListener('click', (e) => {
+  const cell = e.target.closest('.color-cell');
+  if (!cell) return;
+
+  // 移除所有 active
+  grid.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+  cell.classList.add('active');
+
+  const color = cell.dataset.color;
+  selectedEl.textContent = color;
+  selectedEl.style.color = color;
+
+  console.log('event.target:', e.target.className);
+  console.log('event.currentTarget:', e.currentTarget.id);
+});
+
+// 動態新增顏色 — 不需要額外綁定事件
+addBtn.addEventListener('click', () => {
+  const randomColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+  const cell = document.createElement('div');
+  cell.className = 'color-cell';
+  cell.style.backgroundColor = randomColor;
+  cell.dataset.color = randomColor;
+  grid.appendChild(cell);
+  console.log('新增顏色: ' + randomColor + '（自動擁有事件處理！）');
+});
+
+// === 事件傳播演示 ===
+function logEvent(name, e) {
+  const time = new Date().toLocaleTimeString();
+  logEl.innerHTML += time + ' [' + e.eventPhase + '] ' + name +
+    ' | target: ' + e.target.id +
+    ' | currentTarget: ' + e.currentTarget.id + '<br>';
+}
+
+['outer', 'middle', 'inner'].forEach(id => {
+  const el = document.querySelector('#' + id);
+  // 捕獲階段
+  el.addEventListener('click', (e) => logEvent(id + '(捕獲)', e), true);
+  // 冒泡階段
+  el.addEventListener('click', (e) => logEvent(id + '(冒泡)', e), false);
+});
+
+// 點擊 inner 時清除舊紀錄
+document.querySelector('#inner').addEventListener('click', () => {
+  logEl.innerHTML = '';
+}, true); // 在捕獲階段最先執行清除`}
+/>
+
+## 總結
+
+| 概念 | 說明 |
+|------|------|
+| 事件捕獲 | 從外到內，window → 目標元素 |
+| 事件冒泡 | 從內到外，目標元素 → window |
+| event.target | 實際觸發事件的元素 |
+| event.currentTarget | 綁定事件監聽器的元素 |
+| stopPropagation | 阻止事件繼續傳播 |
+| preventDefault | 阻止瀏覽器預設行為 |
+| 事件委派 | 利用冒泡，在父元素上統一處理子元素的事件 |
+
+事件委派是前端開發中非常實用的模式，特別是在處理動態內容時。結合 `closest()` 方法，能寫出簡潔且高效的事件處理程式碼。

@@ -1,0 +1,296 @@
+# 響應式設計
+
+響應式網頁設計（Responsive Web Design, RWD）讓網站能自動適應不同裝置的螢幕大小，從手機到桌面螢幕都提供良好的使用體驗。核心工具包括 viewport 設定、Media Queries、彈性單位和現代 CSS 佈局。
+
+## Viewport Meta Tag
+
+每個響應式網頁都必須在 `<head>` 中包含以下標籤：
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+```
+
+| 屬性 | 說明 |
+|------|------|
+| `width=device-width` | 讓頁面寬度等於裝置寬度 |
+| `initial-scale=1.0` | 初始縮放比例為 1 |
+| `maximum-scale=1.0` | 最大縮放（不建議限制，影響無障礙） |
+| `user-scalable=no` | 禁止縮放（強烈不建議） |
+
+<Callout type="warning" title="不要禁止使用者縮放">
+設定 `user-scalable=no` 或 `maximum-scale=1` 會影響有視覺障礙的使用者。WCAG 無障礙規範要求允許至少 200% 的縮放。
+</Callout>
+
+## Media Queries 語法
+
+Media Queries 是響應式設計的核心，讓我們根據裝置特性套用不同樣式：
+
+### 基本語法
+
+```css
+/* 螢幕寬度 768px 以上時套用 */
+@media (min-width: 768px) {
+  .container {
+    max-width: 720px;
+  }
+}
+
+/* 螢幕寬度 480px 以下時套用 */
+@media (max-width: 480px) {
+  .sidebar {
+    display: none;
+  }
+}
+```
+
+### 複合條件
+
+```css
+/* AND：同時滿足 */
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* 平板尺寸 */
+}
+
+/* OR：任一滿足 */
+@media (max-width: 480px), (orientation: portrait) {
+  /* 小螢幕或直向 */
+}
+
+/* NOT：排除 */
+@media not print {
+  /* 非列印時 */
+}
+```
+
+### 常用 Media Features
+
+```css
+/* 方向 */
+@media (orientation: landscape) { /* 橫向 */ }
+@media (orientation: portrait)  { /* 直向 */ }
+
+/* 是否支持 hover */
+@media (hover: hover)  { /* 可以 hover（滑鼠） */ }
+@media (hover: none)   { /* 無法 hover（觸控） */ }
+
+/* 使用者偏好 */
+@media (prefers-color-scheme: dark) { /* 深色模式 */ }
+@media (prefers-reduced-motion: reduce) { /* 減少動態效果 */ }
+
+/* 解析度 */
+@media (min-resolution: 2dppx) { /* 高解析度（Retina） */ }
+```
+
+## 行動優先設計（Mobile First）
+
+行動優先策略是先撰寫手機版的基礎樣式，再透過 `min-width` 的 Media Queries 逐步增強至更大螢幕。
+
+```css
+/* 基礎樣式（手機） */
+.container {
+  padding: 16px;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 平板以上 */
+@media (min-width: 768px) {
+  .container {
+    padding: 24px;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .grid > * {
+    flex: 1 1 calc(50% - 8px);
+  }
+}
+
+/* 桌面以上 */
+@media (min-width: 1024px) {
+  .container {
+    max-width: 960px;
+  }
+
+  .grid > * {
+    flex: 1 1 calc(33.333% - 11px);
+  }
+}
+```
+
+<Callout type="tip" title="為什麼選擇行動優先？">
+行動優先有幾個好處：(1) 手機使用者不需下載大螢幕的多餘樣式 (2) 強制你優先考慮核心內容 (3) 從簡單逐步增強比從複雜逐步移除更容易維護。
+</Callout>
+
+## 常見斷點
+
+不同框架使用的斷點略有不同，以下是常見的選擇：
+
+| 名稱 | 斷點 | 適用裝置 |
+|------|------|----------|
+| xs | < 576px | 小手機 |
+| sm | >= 576px | 大手機 |
+| md | >= 768px | 平板 |
+| lg | >= 1024px | 小桌面 |
+| xl | >= 1280px | 大桌面 |
+| xxl | >= 1536px | 超大螢幕 |
+
+<Callout type="tip" title="根據內容設定斷點">
+不要被固定的斷點數字綁住。最好的做法是縮放瀏覽器，觀察你的內容在哪個寬度開始「看起來不對」，然後在那裡設定斷點。
+</Callout>
+
+## 彈性單位
+
+| 單位 | 說明 | 適用場景 |
+|------|------|----------|
+| `%` | 相對於父元素 | 寬度、間距 |
+| `em` | 相對於目前元素字體大小 | 間距、media query |
+| `rem` | 相對於根元素字體大小 | 字體大小、間距 |
+| `vw` / `vh` | 視窗寬度 / 高度的百分比 | 全螢幕區塊 |
+| `dvh` | 動態視窗高度（含行動裝置網址列） | 行動裝置全螢幕 |
+| `clamp()` | 設定最小、理想、最大值 | 流體字體大小 |
+
+### 流體排版
+
+```css
+/* clamp(最小值, 理想值, 最大值) */
+h1 {
+  font-size: clamp(1.5rem, 4vw, 3rem);
+}
+
+p {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="響應式卡片佈局"
+  defaultHTML={`<div class="responsive-grid">
+  <div class="card">
+    <div class="card-img">🖼️</div>
+    <div class="card-body">
+      <h3>卡片標題一</h3>
+      <p>這是卡片內容，在不同螢幕寬度下會自動調整排列方式。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-img">📷</div>
+    <div class="card-body">
+      <h3>卡片標題二</h3>
+      <p>試著調整預覽區域的寬度觀察變化。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-img">🎨</div>
+    <div class="card-body">
+      <h3>卡片標題三</h3>
+      <p>使用 auto-fit 搭配 minmax 實現自適應。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-img">📱</div>
+    <div class="card-body">
+      <h3>卡片標題四</h3>
+      <p>不需要 Media Query 也能自動換行。</p>
+    </div>
+  </div>
+</div>`}
+  defaultCSS={`/* 基礎樣式 */
+body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 12px;
+  background: #f0f2f5;
+}
+
+/* 自適應網格 — 不需要 Media Query */
+.responsive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: transform 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+
+.card-img {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  padding: 24px;
+  font-size: 32px;
+  text-align: center;
+}
+
+.card-body {
+  padding: 16px;
+}
+
+.card-body h3 {
+  margin: 0 0 8px;
+  font-size: clamp(0.9rem, 2vw, 1.1rem);
+}
+
+.card-body p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+}`}
+  defaultJS={``}
+/>
+
+## 響應式圖片
+
+```css
+/* 基本響應式圖片 */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* object-fit 控制填充方式 */
+.cover-image {
+  width: 100%;
+  height: 300px;
+  object-fit: cover;       /* 裁切填滿 */
+  object-position: center; /* 裁切位置 */
+}
+```
+
+HTML 的 `<picture>` 標籤可根據螢幕大小載入不同圖片：
+
+```html
+<picture>
+  <source media="(min-width: 1024px)" srcset="large.jpg">
+  <source media="(min-width: 768px)" srcset="medium.jpg">
+  <img src="small.jpg" alt="描述文字">
+</picture>
+```
+
+## 最佳實踐
+
+1. **行動優先**：從最小螢幕開始設計，逐步增強
+2. **使用彈性單位**：避免固定像素值，多用 `rem`、`%`、`clamp()`
+3. **善用 CSS Grid / Flexbox**：減少 Media Query 的需求
+4. **測試真實裝置**：瀏覽器模擬器不能完全取代真實裝置測試
+5. **注意效能**：行動裝置的網路和處理能力有限

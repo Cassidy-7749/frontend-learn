@@ -1,0 +1,407 @@
+# Web API
+
+瀏覽器提供了許多強大的原生 API，讓我們無需第三方函式庫就能實現複雜功能。本篇介紹幾個實用且面試常考的 Web API。
+
+## IntersectionObserver
+
+IntersectionObserver 用於偵測元素是否進入（或離開）可視區域，是實現懶載入和無限滾動的最佳方案：
+
+```js
+const observer = new IntersectionObserver(
+  (entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        console.log('元素進入可視區域', entry.target);
+        console.log('可見比例:', entry.intersectionRatio);
+      }
+    });
+  },
+  {
+    root: null,          // 預設為 viewport
+    rootMargin: '0px',   // 擴展或縮小偵測範圍
+    threshold: [0, 0.5, 1], // 觸發的可見比例閾值
+  }
+);
+
+// 開始觀察
+observer.observe(document.querySelector('.target'));
+
+// 停止觀察
+observer.unobserve(element);
+
+// 停止所有觀察
+observer.disconnect();
+```
+
+### 圖片懶載入
+
+```js
+function lazyLoadImages() {
+  const images = document.querySelectorAll('img[data-src]');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+        observer.unobserve(img);
+      }
+    });
+  }, { rootMargin: '200px' }); // 提前 200px 開始載入
+
+  images.forEach(img => observer.observe(img));
+}
+```
+
+### 無限滾動
+
+```js
+function setupInfiniteScroll() {
+  const sentinel = document.getElementById('scroll-sentinel');
+
+  const observer = new IntersectionObserver(async (entries) => {
+    if (entries[0].isIntersecting) {
+      await loadMoreData();
+    }
+  });
+
+  observer.observe(sentinel);
+}
+```
+
+<Callout type="tip" title="效能優勢">
+相比傳統的 `scroll` 事件監聽，IntersectionObserver 在瀏覽器底層執行，不會阻塞主執行緒，且自動做了節流處理，效能遠優於手動計算元素位置。
+</Callout>
+
+## MutationObserver
+
+MutationObserver 用於監聽 DOM 樹的變化，當節點被新增、刪除或屬性改變時觸發回呼：
+
+```js
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach(mutation => {
+    switch (mutation.type) {
+      case 'childList':
+        console.log('子節點變化');
+        mutation.addedNodes.forEach(node => {
+          console.log('新增:', node);
+        });
+        mutation.removedNodes.forEach(node => {
+          console.log('移除:', node);
+        });
+        break;
+
+      case 'attributes':
+        console.log(`屬性 ${mutation.attributeName} 已變更`);
+        break;
+
+      case 'characterData':
+        console.log('文字內容已變更');
+        break;
+    }
+  });
+});
+
+// 設定觀察選項
+observer.observe(document.getElementById('target'), {
+  childList: true,     // 觀察子節點的新增/移除
+  attributes: true,    // 觀察屬性變化
+  characterData: true, // 觀察文字內容變化
+  subtree: true,       // 觀察所有後代節點
+  attributeFilter: ['class', 'style'], // 只觀察特定屬性
+  attributeOldValue: true, // 記錄舊屬性值
+});
+
+// 停止觀察
+observer.disconnect();
+```
+
+### 實際應用：監控第三方腳本修改 DOM
+
+```js
+function watchForInjections(container) {
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.tagName === 'SCRIPT') {
+          console.warn('偵測到腳本注入:', node.src);
+          node.remove();
+        }
+      }
+    }
+  });
+
+  observer.observe(container, { childList: true, subtree: true });
+}
+```
+
+## ResizeObserver
+
+ResizeObserver 用於監聽元素尺寸變化，比 `window.resize` 事件更精確，可以觀察任何元素：
+
+```js
+const observer = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const { width, height } = entry.contentRect;
+    console.log(`尺寸: ${width} x ${height}`);
+
+    // 根據寬度調整佈局
+    if (width < 600) {
+      entry.target.classList.add('compact');
+    } else {
+      entry.target.classList.remove('compact');
+    }
+  }
+});
+
+observer.observe(document.querySelector('.responsive-container'));
+```
+
+<Callout type="info" title="Container Queries 的前身">
+在 CSS Container Queries 出現之前，ResizeObserver 是實現「容器查詢」邏輯的唯一方式。即使現在有了 Container Queries，ResizeObserver 在需要 JavaScript 邏輯的場景仍然很有用。
+</Callout>
+
+## Clipboard API
+
+Clipboard API 提供安全的方式讀寫系統剪貼簿：
+
+```js
+// 複製文字
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    console.log('已複製到剪貼簿');
+  } catch (err) {
+    console.error('複製失敗:', err);
+  }
+}
+
+// 讀取剪貼簿
+async function pasteText() {
+  try {
+    const text = await navigator.clipboard.readText();
+    console.log('剪貼簿內容:', text);
+    return text;
+  } catch (err) {
+    console.error('讀取失敗（可能被使用者拒絕）');
+  }
+}
+
+// 複製富文本或圖片
+async function copyRichContent() {
+  const blob = new Blob(['<b>粗體文字</b>'], { type: 'text/html' });
+  const item = new ClipboardItem({ 'text/html': blob });
+  await navigator.clipboard.write([item]);
+}
+```
+
+<Callout type="warning" title="權限與安全限制">
+Clipboard API 需要頁面處於安全上下文（HTTPS）中才能使用。讀取剪貼簿（`readText`）還需要使用者授權。在嵌入式 iframe（如 CodePlayground）中可能受限。
+</Callout>
+
+## Notification API
+
+Notification API 讓網頁可以顯示系統層級的通知：
+
+```js
+// 請求權限
+async function requestNotificationPermission() {
+  const permission = await Notification.requestPermission();
+  console.log('通知權限:', permission); // 'granted', 'denied', 'default'
+  return permission;
+}
+
+// 顯示通知
+function showNotification(title, body) {
+  if (Notification.permission === 'granted') {
+    const notification = new Notification(title, {
+      body,
+      icon: '/icon.png',
+      badge: '/badge.png',
+      tag: 'message',       // 相同 tag 的通知會替換
+      requireInteraction: false,
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+
+    notification.onclose = () => {
+      console.log('通知已關閉');
+    };
+
+    // 自動關閉
+    setTimeout(() => notification.close(), 5000);
+  }
+}
+```
+
+## 其他實用 API
+
+### Page Visibility API
+
+```js
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    console.log('頁面被隱藏（切換分頁）');
+    // 暫停動畫、影片、輪詢等
+  } else {
+    console.log('頁面可見');
+    // 恢復操作
+  }
+});
+```
+
+### Fullscreen API
+
+```js
+// 進入全螢幕
+async function enterFullscreen(element) {
+  await element.requestFullscreen();
+}
+
+// 離開全螢幕
+async function exitFullscreen() {
+  await document.exitFullscreen();
+}
+
+document.addEventListener('fullscreenchange', () => {
+  console.log('全螢幕狀態:', !!document.fullscreenElement);
+});
+```
+
+## 互動範例
+
+<CodePlayground
+  title="Web API 實作示範"
+  defaultHTML={`<div id="app">
+  <h3>Web API 示範</h3>
+
+  <section>
+    <h4>IntersectionObserver</h4>
+    <div id="scrollArea" style="height:150px;overflow-y:auto;border:1px solid #ccc;padding:8px;">
+      <div style="height:100px;background:#e0e7ff;margin:4px;padding:8px;">向下捲動...</div>
+      <div style="height:100px;background:#e0e7ff;margin:4px;padding:8px;">繼續捲動...</div>
+      <div id="target" style="height:80px;background:#fecaca;margin:4px;padding:8px;transition:background 0.3s;">
+        目標元素（觀察中）
+      </div>
+      <div style="height:100px;background:#e0e7ff;margin:4px;padding:8px;">底部內容</div>
+    </div>
+  </section>
+
+  <section style="margin-top:12px;">
+    <h4>MutationObserver</h4>
+    <button id="addBtn">新增元素</button>
+    <button id="changeAttr">改變屬性</button>
+    <div id="mutationTarget" style="border:1px solid #ccc;padding:8px;min-height:40px;"></div>
+  </section>
+
+  <section style="margin-top:12px;">
+    <h4>ResizeObserver</h4>
+    <div id="resizeTarget" style="border:2px dashed #3b82f6;padding:12px;resize:both;overflow:auto;width:200px;min-height:50px;">
+      拖曳右下角調整大小
+    </div>
+  </section>
+
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:60px;margin-top:12px;max-height:150px;overflow-y:auto;"></pre>
+</div>`}
+  defaultCSS={`#app { font-family: sans-serif; }
+h4 { margin: 4px 0; }
+section { margin-bottom: 8px; }
+button {
+  padding: 6px 12px;
+  margin: 4px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #2563eb; }`}
+  defaultJS={`const output = document.getElementById('output');
+function log(msg) {
+  output.textContent = msg + '\\n' + output.textContent;
+}
+
+// === IntersectionObserver ===
+const target = document.getElementById('target');
+const scrollArea = document.getElementById('scrollArea');
+
+const intObserver = new IntersectionObserver(
+  (entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.background = '#bbf7d0';
+        entry.target.textContent = '已進入可視區域!';
+        log('[Intersection] 目標元素可見 (' +
+          Math.round(entry.intersectionRatio * 100) + '%)');
+      } else {
+        entry.target.style.background = '#fecaca';
+        entry.target.textContent = '目標元素（觀察中）';
+        log('[Intersection] 目標元素離開可視區域');
+      }
+    });
+  },
+  { root: scrollArea, threshold: [0, 0.5, 1] }
+);
+intObserver.observe(target);
+
+// === MutationObserver ===
+const mutationTarget = document.getElementById('mutationTarget');
+let itemCount = 0;
+
+const mutObserver = new MutationObserver((mutations) => {
+  mutations.forEach(m => {
+    if (m.type === 'childList') {
+      m.addedNodes.forEach(n => {
+        if (n.nodeType === 1) log('[Mutation] 新增子節點: ' + n.textContent);
+      });
+    }
+    if (m.type === 'attributes') {
+      log('[Mutation] 屬性變更: ' + m.attributeName);
+    }
+  });
+});
+mutObserver.observe(mutationTarget, {
+  childList: true,
+  attributes: true,
+  subtree: true,
+});
+
+document.getElementById('addBtn').addEventListener('click', () => {
+  const el = document.createElement('div');
+  el.textContent = '新元素 #' + (++itemCount);
+  el.style.padding = '4px';
+  el.style.margin = '2px';
+  el.style.background = '#dbeafe';
+  mutationTarget.appendChild(el);
+});
+
+document.getElementById('changeAttr').addEventListener('click', () => {
+  mutationTarget.setAttribute('data-updated', Date.now());
+  mutationTarget.style.borderColor =
+    '#' + Math.floor(Math.random()*16777215).toString(16);
+});
+
+// === ResizeObserver ===
+const resizeTarget = document.getElementById('resizeTarget');
+const resizeObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const { width, height } = entry.contentRect;
+    log('[Resize] ' + Math.round(width) + ' x ' + Math.round(height));
+    resizeTarget.textContent =
+      Math.round(width) + ' x ' + Math.round(height);
+  }
+});
+resizeObserver.observe(resizeTarget);`}
+/>
+
+## 最佳實踐
+
+1. **及時清理 Observer**：元件卸載時呼叫 `disconnect()`，避免記憶體洩漏
+2. **善用 threshold**：IntersectionObserver 設定合適的閾值，避免不必要的回呼
+3. **降級處理**：使用前檢查 API 是否存在（`if ('IntersectionObserver' in window)`）
+4. **避免過度觀察**：只觀察真正需要的元素，過多觀察會影響效能
+5. **搭配框架使用**：React 中封裝成 Hook，Vue 中封裝成 Composable

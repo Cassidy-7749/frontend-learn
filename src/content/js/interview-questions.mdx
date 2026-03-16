@@ -1,0 +1,583 @@
+# 常見面試題
+
+本篇整理了 JavaScript 面試中最常出現的經典題目，涵蓋概念辨析、手寫實作與程式碼分析。深入理解這些題目背後的原理，比單純記答案更重要。
+
+## 深拷貝 vs 淺拷貝
+
+淺拷貝只複製第一層，巢狀物件仍然共享引用；深拷貝則完全獨立。
+
+### 淺拷貝方法
+
+```js
+const original = { a: 1, b: { c: 2 } };
+
+// 方法一：展開運算子
+const copy1 = { ...original };
+
+// 方法二：Object.assign
+const copy2 = Object.assign({}, original);
+
+// 驗證淺拷貝
+copy1.a = 100;
+copy1.b.c = 999;
+console.log(original.a);   // 1（原始值不受影響）
+console.log(original.b.c); // 999（巢狀物件被修改了！）
+```
+
+### 深拷貝方法
+
+```js
+// 方法一：structuredClone（現代瀏覽器推薦）
+const deep1 = structuredClone(original);
+
+// 方法二：JSON 序列化（有限制）
+const deep2 = JSON.parse(JSON.stringify(original));
+// 缺點：無法處理 undefined、函式、Symbol、循環引用、Date、RegExp、Map、Set
+
+// 方法三：手寫深拷貝
+function deepClone(obj, visited = new WeakMap()) {
+  // 原始型別直接回傳
+  if (obj === null || typeof obj !== 'object') return obj;
+
+  // 處理循環引用
+  if (visited.has(obj)) return visited.get(obj);
+
+  // 處理特殊物件
+  if (obj instanceof Date) return new Date(obj);
+  if (obj instanceof RegExp) return new RegExp(obj.source, obj.flags);
+  if (obj instanceof Map) {
+    const map = new Map();
+    visited.set(obj, map);
+    obj.forEach((val, key) => map.set(deepClone(key, visited), deepClone(val, visited)));
+    return map;
+  }
+  if (obj instanceof Set) {
+    const set = new Set();
+    visited.set(obj, set);
+    obj.forEach(val => set.add(deepClone(val, visited)));
+    return set;
+  }
+
+  // 處理陣列與一般物件
+  const clone = Array.isArray(obj) ? [] : {};
+  visited.set(obj, clone);
+
+  for (const key of Reflect.ownKeys(obj)) {
+    clone[key] = deepClone(obj[key], visited);
+  }
+
+  return clone;
+}
+```
+
+<Callout type="tip" title="推薦使用 structuredClone">
+`structuredClone()` 是瀏覽器原生的深拷貝 API，能處理循環引用、Date、RegExp、Map、Set 等特殊類型。除非需要支援非常舊的瀏覽器，否則推薦直接使用。
+</Callout>
+
+## == vs ===
+
+`==`（寬鬆相等）會進行型別轉換，`===`（嚴格相等）不會：
+
+```js
+// == 的隱式型別轉換
+console.log(1 == '1');        // true（字串轉數字）
+console.log(true == 1);       // true（布林轉數字）
+console.log(null == undefined); // true（特殊規則）
+console.log('' == 0);         // true（空字串轉為 0）
+console.log([] == false);     // true（[] → '' → 0）
+console.log([] == ![]);       // true（![] 為 false）
+
+// === 嚴格比較
+console.log(1 === '1');        // false
+console.log(true === 1);      // false
+console.log(null === undefined); // false
+```
+
+<Callout type="warning" title="始終使用 ===">
+除了 `value == null`（同時檢查 null 和 undefined）這個慣用法之外，建議在所有情況下使用 `===` 嚴格比較，避免隱式型別轉換帶來的意外行為。
+</Callout>
+
+## null vs undefined
+
+```js
+// undefined — 宣告但未賦值
+let a;
+console.log(a);                 // undefined
+console.log(typeof a);          // 'undefined'
+
+// null — 刻意設定為「空值」
+let b = null;
+console.log(b);                 // null
+console.log(typeof b);          // 'object'（歷史 bug）
+
+// 比較
+console.log(null == undefined);  // true
+console.log(null === undefined); // false
+
+// 常見場景
+function findUser(id) {
+  // 找不到時回傳 null（明確表示「沒有值」）
+  return db.users.find(u => u.id === id) ?? null;
+}
+
+// 預設參數只在 undefined 時生效
+function greet(name = 'World') {
+  console.log(`Hello, ${name}`);
+}
+greet(undefined); // 'Hello, World'
+greet(null);      // 'Hello, null'
+```
+
+## 陣列去重
+
+```js
+const arr = [1, 2, 3, 2, 1, 4, 5, 3, 6];
+
+// 方法一：Set（最簡潔）
+const unique1 = [...new Set(arr)];
+
+// 方法二：filter + indexOf
+const unique2 = arr.filter((item, index) => arr.indexOf(item) === index);
+
+// 方法三：reduce
+const unique3 = arr.reduce((acc, item) => {
+  return acc.includes(item) ? acc : [...acc, item];
+}, []);
+
+// 物件陣列去重（根據特定屬性）
+const users = [
+  { id: 1, name: 'Alice' },
+  { id: 2, name: 'Bob' },
+  { id: 1, name: 'Alice' },
+];
+
+const uniqueUsers = users.filter(
+  (user, index, self) => self.findIndex(u => u.id === user.id) === index
+);
+
+// 使用 Map 更高效
+function uniqueBy(arr, key) {
+  return [...new Map(arr.map(item => [item[key], item])).values()];
+}
+```
+
+## 手寫 Promise
+
+```js
+class MyPromise {
+  #state = 'pending';
+  #value = undefined;
+  #callbacks = [];
+
+  constructor(executor) {
+    const resolve = (value) => {
+      if (this.#state !== 'pending') return;
+      this.#state = 'fulfilled';
+      this.#value = value;
+      this.#callbacks.forEach(cb => cb.onFulfilled(value));
+    };
+
+    const reject = (reason) => {
+      if (this.#state !== 'pending') return;
+      this.#state = 'rejected';
+      this.#value = reason;
+      this.#callbacks.forEach(cb => cb.onRejected(reason));
+    };
+
+    try {
+      executor(resolve, reject);
+    } catch (error) {
+      reject(error);
+    }
+  }
+
+  then(onFulfilled, onRejected) {
+    onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : v => v;
+    onRejected = typeof onRejected === 'function' ? onRejected : e => { throw e; };
+
+    return new MyPromise((resolve, reject) => {
+      const handle = (fn, value) => {
+        queueMicrotask(() => {
+          try {
+            const result = fn(value);
+            if (result instanceof MyPromise) {
+              result.then(resolve, reject);
+            } else {
+              resolve(result);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      };
+
+      if (this.#state === 'fulfilled') {
+        handle(onFulfilled, this.#value);
+      } else if (this.#state === 'rejected') {
+        handle(onRejected, this.#value);
+      } else {
+        this.#callbacks.push({
+          onFulfilled: (value) => handle(onFulfilled, value),
+          onRejected: (reason) => handle(onRejected, reason),
+        });
+      }
+    });
+  }
+
+  catch(onRejected) {
+    return this.then(null, onRejected);
+  }
+
+  finally(callback) {
+    return this.then(
+      (value) => MyPromise.resolve(callback()).then(() => value),
+      (reason) => MyPromise.resolve(callback()).then(() => { throw reason; })
+    );
+  }
+
+  static resolve(value) {
+    return new MyPromise((resolve) => resolve(value));
+  }
+
+  static reject(reason) {
+    return new MyPromise((_, reject) => reject(reason));
+  }
+}
+```
+
+## 手寫 debounce
+
+```js
+function debounce(fn, delay, options = {}) {
+  let timer = null;
+  const { leading = false, trailing = true } = options;
+
+  function debounced(...args) {
+    const callNow = leading && !timer;
+
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (trailing) {
+        fn.apply(this, args);
+      }
+    }, delay);
+
+    if (callNow) {
+      fn.apply(this, args);
+    }
+  }
+
+  debounced.cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+
+  return debounced;
+}
+```
+
+## 柯里化（Currying）
+
+柯里化將接受多個參數的函式轉換為一系列接受單一參數的函式：
+
+```js
+// 手動柯里化
+function add(a) {
+  return function (b) {
+    return function (c) {
+      return a + b + c;
+    };
+  };
+}
+add(1)(2)(3); // 6
+
+// 通用柯里化函式
+function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) {
+      return fn.apply(this, args);
+    }
+    return function (...moreArgs) {
+      return curried.apply(this, [...args, ...moreArgs]);
+    };
+  };
+}
+
+// 使用
+const sum = curry((a, b, c) => a + b + c);
+sum(1)(2)(3);     // 6
+sum(1, 2)(3);     // 6
+sum(1)(2, 3);     // 6
+sum(1, 2, 3);     // 6
+
+// 實際應用
+const multiply = curry((a, b) => a * b);
+const double = multiply(2);
+const triple = multiply(3);
+console.log(double(5));  // 10
+console.log(triple(5));  // 15
+```
+
+<Callout type="info" title="柯里化 vs 偏函式應用">
+柯里化（Currying）是將多參數函式轉為逐一接受單個參數的函式。偏函式應用（Partial Application）是固定部分參數產生新函式。柯里化是一種特殊的偏函式應用。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="深拷貝實作與驗證"
+  defaultHTML={`<div id="app">
+  <h3>面試題實作驗證</h3>
+  <button id="cloneBtn">深拷貝測試</button>
+  <button id="curryBtn">柯里化測試</button>
+  <button id="uniqueBtn">陣列去重</button>
+  <button id="promiseBtn">手寫 Promise</button>
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:100px;margin-top:12px;"></pre>
+</div>`}
+  defaultCSS={`#app { font-family: sans-serif; }
+button {
+  padding: 8px 14px;
+  margin: 4px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #2563eb; }`}
+  defaultJS={`const output = document.getElementById('output');
+function log(msg) { output.textContent += msg + '\\n'; }
+
+// === 深拷貝 ===
+function deepClone(obj, visited = new WeakMap()) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (visited.has(obj)) return visited.get(obj);
+  if (obj instanceof Date) return new Date(obj);
+  if (obj instanceof RegExp) return new RegExp(obj.source, obj.flags);
+
+  const clone = Array.isArray(obj) ? [] : {};
+  visited.set(obj, clone);
+
+  for (const key of Object.keys(obj)) {
+    clone[key] = deepClone(obj[key], visited);
+  }
+  return clone;
+}
+
+document.getElementById('cloneBtn').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== 深拷貝測試 ===');
+
+  const original = {
+    name: 'Alice',
+    scores: [90, 85, 92],
+    info: { age: 25, hobbies: ['reading'] },
+    date: new Date('2024-01-01'),
+  };
+
+  // 加入循環引用
+  original.self = original;
+
+  const cloned = deepClone(original);
+
+  // 修改拷貝
+  cloned.name = 'Bob';
+  cloned.scores.push(100);
+  cloned.info.hobbies.push('coding');
+
+  log('原始: name=' + original.name + ', scores=' + original.scores);
+  log('拷貝: name=' + cloned.name + ', scores=' + cloned.scores);
+  log('原始 hobbies: ' + original.info.hobbies);
+  log('拷貝 hobbies: ' + cloned.info.hobbies);
+  log('循環引用: ' + (cloned.self === cloned));
+  log('Date 獨立: ' + (cloned.date !== original.date));
+  log('完全獨立!');
+});
+
+// === 柯里化 ===
+function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) {
+      return fn.apply(this, args);
+    }
+    return (...more) => curried(...args, ...more);
+  };
+}
+
+document.getElementById('curryBtn').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== 柯里化測試 ===');
+
+  const add = curry((a, b, c) => a + b + c);
+  log('add(1)(2)(3) = ' + add(1)(2)(3));
+  log('add(1, 2)(3) = ' + add(1, 2)(3));
+  log('add(1)(2, 3) = ' + add(1)(2, 3));
+  log('add(1, 2, 3) = ' + add(1, 2, 3));
+
+  const multiply = curry((a, b) => a * b);
+  const double = multiply(2);
+  const triple = multiply(3);
+  log('');
+  log('double(5) = ' + double(5));
+  log('triple(5) = ' + triple(5));
+});
+
+// === 陣列去重 ===
+document.getElementById('uniqueBtn').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== 陣列去重測試 ===');
+
+  const arr = [1, 2, 3, 2, 1, 4, 5, 3, 6, 4];
+  log('原始: [' + arr + ']');
+  log('');
+
+  log('Set: [' + [...new Set(arr)] + ']');
+  log('filter: [' + arr.filter((v, i) => arr.indexOf(v) === i) + ']');
+
+  const users = [
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob' },
+    { id: 1, name: 'Alice' },
+    { id: 3, name: 'Charlie' },
+  ];
+  const unique = [...new Map(users.map(u => [u.id, u])).values()];
+  log('');
+  log('物件去重 (by id):');
+  unique.forEach(u => log('  ' + JSON.stringify(u)));
+});
+
+// === 手寫 Promise ===
+document.getElementById('promiseBtn').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== 手寫 Promise 測試 ===');
+
+  class MyPromise {
+    #state = 'pending';
+    #value = undefined;
+    #cbs = [];
+
+    constructor(exec) {
+      const resolve = (v) => {
+        if (this.#state !== 'pending') return;
+        this.#state = 'fulfilled';
+        this.#value = v;
+        this.#cbs.forEach(cb => cb.onF(v));
+      };
+      const reject = (r) => {
+        if (this.#state !== 'pending') return;
+        this.#state = 'rejected';
+        this.#value = r;
+        this.#cbs.forEach(cb => cb.onR(r));
+      };
+      try { exec(resolve, reject); } catch (e) { reject(e); }
+    }
+
+    then(onF, onR) {
+      onF = typeof onF === 'function' ? onF : v => v;
+      onR = typeof onR === 'function' ? onR : e => { throw e; };
+      return new MyPromise((res, rej) => {
+        const handle = (fn, val) => {
+          queueMicrotask(() => {
+            try {
+              const r = fn(val);
+              r instanceof MyPromise ? r.then(res, rej) : res(r);
+            } catch (e) { rej(e); }
+          });
+        };
+        if (this.#state === 'fulfilled') handle(onF, this.#value);
+        else if (this.#state === 'rejected') handle(onR, this.#value);
+        else this.#cbs.push({
+          onF: v => handle(onF, v),
+          onR: r => handle(onR, r),
+        });
+      });
+    }
+
+    catch(onR) { return this.then(null, onR); }
+  }
+
+  new MyPromise((resolve) => {
+    log('1. Promise 建立');
+    setTimeout(() => resolve('Hello'), 100);
+  })
+  .then(value => {
+    log('2. 收到: ' + value);
+    return value + ' World';
+  })
+  .then(value => {
+    log('3. 鏈式: ' + value);
+    return new MyPromise(res => res(value + '!'));
+  })
+  .then(value => {
+    log('4. 巢狀 Promise: ' + value);
+    log('所有步驟完成!');
+  });
+});`}
+/>
+
+## 其他高頻面試題速覽
+
+### typeof vs instanceof
+
+```js
+typeof 'hello'       // 'string'
+typeof 42            // 'number'
+typeof true          // 'boolean'
+typeof undefined     // 'undefined'
+typeof null          // 'object'（歷史 bug）
+typeof {}            // 'object'
+typeof []            // 'object'
+typeof function(){}  // 'function'
+
+// instanceof 檢查原型鏈
+[] instanceof Array   // true
+[] instanceof Object  // true
+'' instanceof String  // false（原始型別非物件）
+```
+
+### 事件循環輸出題
+
+```js
+console.log('1');
+
+setTimeout(() => console.log('2'), 0);
+
+Promise.resolve().then(() => {
+  console.log('3');
+  Promise.resolve().then(() => console.log('4'));
+});
+
+console.log('5');
+
+// 輸出順序：1, 5, 3, 4, 2
+// 同步 → 微任務 → 宏任務
+```
+
+### this 指向判斷
+
+```js
+const obj = {
+  name: 'Alice',
+  greet: function () {
+    console.log(this.name);
+  },
+  greetArrow: () => {
+    console.log(this.name); // 箭頭函式的 this 繼承自外層
+  },
+};
+
+obj.greet();        // 'Alice'
+obj.greetArrow();   // undefined（this 指向外層）
+
+const fn = obj.greet;
+fn();               // undefined（this 指向 window/undefined）
+```
+
+## 面試技巧
+
+1. **先說思路**：回答前先說明你的思考方向和解題策略
+2. **考慮邊界情況**：空值、空陣列、循環引用、超大資料等
+3. **寫完後自我檢查**：口述程式碼的執行流程，確認邏輯正確
+4. **提出優化方案**：給出基本解法後，主動討論效能優化或替代方案
+5. **不要硬背答案**：理解原理，才能應對變化題

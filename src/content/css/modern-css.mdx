@@ -1,0 +1,429 @@
+# 現代 CSS
+
+CSS 在近幾年迎來了爆發性的更新，許多過去需要 JavaScript 或預處理器的功能現在都能用原生 CSS 實現。本篇介紹幾個最具影響力的現代 CSS 特性。
+
+## Container Queries
+
+Media Queries 根據視窗大小調整樣式，而 Container Queries 讓元素根據其父容器的大小來調整。這對元件化開發非常重要，因為同一個元件可能被放在不同寬度的容器中。
+
+### 基本用法
+
+```css
+/* 1. 定義容器 */
+.card-wrapper {
+  container-type: inline-size;
+  container-name: card;
+}
+
+/* 2. 根據容器寬度調整子元素 */
+@container card (min-width: 400px) {
+  .card {
+    display: flex;
+    flex-direction: row;
+  }
+}
+
+@container card (max-width: 399px) {
+  .card {
+    display: flex;
+    flex-direction: column;
+  }
+}
+```
+
+### container-type 值
+
+| 值 | 說明 |
+|----|------|
+| `normal` | 預設，不作為容器 |
+| `inline-size` | 根據行內方向（寬度）查詢 |
+| `size` | 根據寬度和高度查詢 |
+
+<Callout type="tip" title="Container Queries 的價值">
+Container Queries 解決了元件複用的根本問題。過去一個卡片元件在側邊欄需要直向排列、在主內容需要橫向排列，只能用 Media Queries 加上特定 class 來區分。現在元件可以根據自身容器大小「自動」適應佈局。
+</Callout>
+
+### 容器查詢單位
+
+| 單位 | 說明 |
+|------|------|
+| `cqw` | 容器寬度的 1% |
+| `cqh` | 容器高度的 1% |
+| `cqi` | 容器行內方向的 1% |
+| `cqb` | 容器區塊方向的 1% |
+
+```css
+.card-title {
+  font-size: clamp(1rem, 4cqi, 2rem);
+}
+```
+
+## :has() 選擇器
+
+`:has()` 被稱為「父元素選擇器」，它讓我們能根據子元素或後續兄弟元素的狀態來選取元素。這是 CSS 選擇器歷史上最重大的突破之一。
+
+### 基本用法
+
+```css
+/* 選取包含 img 的 card */
+.card:has(img) {
+  grid-template-rows: auto 1fr;
+}
+
+/* 選取不包含 img 的 card */
+.card:not(:has(img)) {
+  padding: 24px;
+}
+
+/* 包含 checked checkbox 的 label */
+label:has(input:checked) {
+  background: #e3f2fd;
+  border-color: #2196F3;
+}
+```
+
+### 進階應用
+
+```css
+/* 表單驗證：包含無效 input 的 form-group */
+.form-group:has(input:invalid) {
+  border-color: red;
+}
+
+.form-group:has(input:invalid) .error-message {
+  display: block;
+}
+
+/* 根據子元素數量調整樣式 */
+.grid:has(> :nth-child(4)) {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* 當 details 展開時改變相鄰元素 */
+details:has([open]) + .content {
+  margin-top: 20px;
+}
+```
+
+<Callout type="warning" title="效能注意">
+`:has()` 在選擇器中是很強大的工具，但過度複雜的 `:has()` 選擇器可能影響渲染效能。避免使用過深的巢狀查詢，如 `.a:has(.b:has(.c:has(.d)))`。
+</Callout>
+
+## CSS Nesting
+
+原生 CSS 巢狀讓我們不再需要預處理器就能寫出巢狀結構的樣式：
+
+```css
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+
+  & h2 {
+    margin: 0 0 12px;
+    font-size: 1.25rem;
+  }
+
+  & p {
+    color: #666;
+    line-height: 1.6;
+  }
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  &.featured {
+    border-left: 4px solid #2196F3;
+  }
+
+  @media (min-width: 768px) {
+    padding: 32px;
+  }
+}
+```
+
+### 巢狀規則
+
+- 使用 `&` 引用父選擇器
+- 可以巢狀 Media Queries 和其他 at-rules
+- 巢狀的選擇器如果以字母開頭（元素選擇器），需要使用 `&` 前綴或 `> p` 等組合語法
+
+```css
+.parent {
+  color: red;
+
+  /* 需要 & 前綴 */
+  & p { color: blue; }
+
+  /* 或使用 > 等組合符 */
+  > span { color: green; }
+
+  /* 偽類和偽元素可直接巢狀 */
+  &:hover { color: orange; }
+  &::before { content: ''; }
+}
+```
+
+## color-mix()
+
+`color-mix()` 讓你在 CSS 中混合兩個顏色：
+
+```css
+.element {
+  /* 50% 的紅色和 50% 的藍色 */
+  background: color-mix(in srgb, red, blue);
+
+  /* 30% 的主色調和 70% 的白色（淡化效果） */
+  background: color-mix(in srgb, var(--primary) 30%, white);
+
+  /* 加深效果 */
+  border-color: color-mix(in srgb, var(--primary) 80%, black);
+}
+```
+
+### 色彩空間
+
+```css
+/* 在不同色彩空間混合 */
+color-mix(in srgb, red, blue)     /* 標準 RGB */
+color-mix(in oklch, red, blue)    /* 感知均勻，效果更自然 */
+color-mix(in hsl, red, blue)      /* HSL 空間 */
+```
+
+<Callout type="tip" title="用 color-mix 替代 opacity">
+以前為了讓顏色變淡，常常需要用 `rgba()` 或單獨的變數。現在可以用 `color-mix(in srgb, var(--primary) 20%, transparent)` 動態產生半透明版本。
+</Callout>
+
+## Subgrid
+
+Subgrid 讓巢狀的 Grid 能繼承父 Grid 的軌道（track）定義，解決了子網格對齊的難題：
+
+```css
+.parent {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.child {
+  grid-column: span 4;
+  display: grid;
+  grid-template-columns: subgrid; /* 繼承父層的 4 列 */
+}
+```
+
+### 常見用途：卡片對齊
+
+```css
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.card {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3; /* 標題、內容、按鈕 */
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="現代 CSS 功能展示"
+  defaultHTML={`<h3>:has() 選擇器應用</h3>
+<div class="form-demo">
+  <label class="checkbox-card">
+    <input type="checkbox">
+    <span>選項 A — 勾選看看效果</span>
+  </label>
+  <label class="checkbox-card">
+    <input type="checkbox">
+    <span>選項 B — 勾選看看效果</span>
+  </label>
+  <label class="checkbox-card">
+    <input type="checkbox" checked>
+    <span>選項 C — 已勾選</span>
+  </label>
+</div>
+
+<h3>color-mix() 調色盤</h3>
+<div class="color-palette">
+  <div class="swatch s1">10%</div>
+  <div class="swatch s2">30%</div>
+  <div class="swatch s3">50%</div>
+  <div class="swatch s4">70%</div>
+  <div class="swatch s5">90%</div>
+  <div class="swatch s6">100%</div>
+</div>
+
+<h3>Container Query 示範</h3>
+<div class="cq-demo">
+  <div class="cq-wrapper narrow">
+    <div class="cq-card">
+      <div class="cq-icon">📦</div>
+      <div class="cq-content">
+        <strong>窄容器</strong>
+        <p>垂直排列</p>
+      </div>
+    </div>
+  </div>
+  <div class="cq-wrapper wide">
+    <div class="cq-card">
+      <div class="cq-icon">📦</div>
+      <div class="cq-content">
+        <strong>寬容器</strong>
+        <p>水平排列</p>
+      </div>
+    </div>
+  </div>
+</div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 8px; }
+h3 { margin: 14px 0 8px; font-size: 15px; }
+
+/* :has() 選擇器 */
+.form-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+/* 使用 :has() — 父元素根據子元素狀態改變 */
+.checkbox-card:has(input:checked) {
+  border-color: #2196F3;
+  background: #E3F2FD;
+}
+
+.checkbox-card:has(input:checked) span {
+  font-weight: bold;
+  color: #1565C0;
+}
+
+/* color-mix() 調色盤 */
+.color-palette {
+  display: flex;
+  gap: 4px;
+}
+
+.swatch {
+  flex: 1;
+  padding: 16px 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+  border-radius: 6px;
+}
+
+.s1 { background: color-mix(in oklch, #2196F3 10%, white); color: #333; }
+.s2 { background: color-mix(in oklch, #2196F3 30%, white); color: #333; }
+.s3 { background: color-mix(in oklch, #2196F3 50%, white); }
+.s4 { background: color-mix(in oklch, #2196F3 70%, white); }
+.s5 { background: color-mix(in oklch, #2196F3 90%, white); }
+.s6 { background: #2196F3; }
+
+/* Container Query 示範 */
+.cq-demo {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+}
+
+.cq-wrapper {
+  container-type: inline-size;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.cq-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 6px;
+  gap: 8px;
+}
+
+.cq-icon { font-size: 28px; }
+.cq-content p { margin: 4px 0 0; font-size: 13px; color: #666; }
+
+@container (min-width: 250px) {
+  .cq-card {
+    flex-direction: row;
+    text-align: left;
+  }
+}`}
+  defaultJS={``}
+/>
+
+## 其他值得關注的新特性
+
+### @scope
+
+限制樣式的作用範圍：
+
+```css
+@scope (.card) to (.card-footer) {
+  p { color: #333; } /* 只影響 .card 到 .card-footer 之間的 p */
+}
+```
+
+### 個別 transform 屬性
+
+```css
+.element {
+  /* 過去需要寫在一起 */
+  transform: translateX(100px) rotate(45deg) scale(1.2);
+
+  /* 現在可以分開寫，方便個別 transition */
+  translate: 100px 0;
+  rotate: 45deg;
+  scale: 1.2;
+}
+```
+
+### @starting-style
+
+定義元素首次出現時的初始樣式，實現進入動畫：
+
+```css
+.dialog {
+  opacity: 1;
+  transition: opacity 0.3s;
+
+  @starting-style {
+    opacity: 0;  /* 首次出現時從透明開始 */
+  }
+}
+```
+
+### Popover API + anchor positioning
+
+```css
+[popover] {
+  position-anchor: --my-anchor;
+  top: anchor(bottom);
+  left: anchor(left);
+}
+```
+
+<Callout type="tip" title="持續學習現代 CSS">
+CSS 的發展速度前所未有地快。推薦關注 Chrome Developers Blog、MDN Web Docs 和 web.dev 來追蹤最新特性。使用 caniuse.com 確認瀏覽器支援狀況。
+</Callout>

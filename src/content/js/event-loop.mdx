@@ -1,0 +1,311 @@
+# 事件迴圈與微任務
+
+JavaScript 是單執行緒語言，但透過事件迴圈（Event Loop）機制，能夠處理非同步操作而不阻塞主執行緒。理解事件迴圈是預測非同步程式碼執行順序的關鍵。
+
+## 執行模型概覽
+
+JavaScript 的執行模型由以下部分組成：
+
+1. **Call Stack**（呼叫堆疊）— 執行同步程式碼
+2. **Web APIs** — 瀏覽器提供的非同步功能（setTimeout、fetch、DOM 事件等）
+3. **Task Queue / Macrotask Queue**（巨任務佇列）— setTimeout、setInterval、I/O
+4. **Microtask Queue**（微任務佇列）— Promise.then、queueMicrotask、MutationObserver
+
+## Call Stack（呼叫堆疊）
+
+Call Stack 是一個後進先出（LIFO）的資料結構，追蹤目前正在執行的函式：
+
+```js
+function third()  { console.log('third'); }
+function second() { third(); console.log('second'); }
+function first()  { second(); console.log('first'); }
+
+first();
+// Call Stack 變化：
+// 1. push first()
+// 2. push second()
+// 3. push third()      → 印出 'third'
+// 4. pop third()
+// 5.                    → 印出 'second'
+// 6. pop second()
+// 7.                    → 印出 'first'
+// 8. pop first()
+```
+
+<Callout type="warning" title="堆疊溢出（Stack Overflow）">
+無限遞迴會導致 Call Stack 不斷堆疊，最終超出限制而報錯：`RangeError: Maximum call stack size exceeded`。這就是「Stack Overflow」這個名詞的由來。
+</Callout>
+
+## Web APIs
+
+瀏覽器提供的 Web APIs 在背景處理非同步操作，完成後將回呼函式放入對應的佇列：
+
+```js
+console.log('1'); // 同步 — 直接在 Call Stack 執行
+
+setTimeout(() => {
+  console.log('2'); // 非同步 — 交給 Web API，完成後放入 Task Queue
+}, 0);
+
+console.log('3'); // 同步 — 直接在 Call Stack 執行
+
+// 輸出：1, 3, 2
+// 即使 setTimeout 延遲 0ms，仍需等 Call Stack 清空
+```
+
+## Macrotask 與 Microtask
+
+這是理解執行順序最重要的概念：
+
+### Macrotask（巨任務）
+- `setTimeout`
+- `setInterval`
+- `setImmediate`（Node.js）
+- I/O 操作
+- UI 渲染事件
+
+### Microtask（微任務）
+- `Promise.then / catch / finally`
+- `queueMicrotask`
+- `MutationObserver`
+- `process.nextTick`（Node.js）
+
+### 執行順序規則
+
+```
+1. 執行 Call Stack 中的同步程式碼
+2. Call Stack 清空後，清空所有 Microtask Queue
+3. 執行一個 Macrotask
+4. 回到步驟 2（再次清空 Microtask）
+5. 重複...
+```
+
+<Callout type="tip" title="記憶口訣">
+**微任務優先於巨任務**。每次 Call Stack 清空後，會先把所有微任務（Microtask）處理完，才會處理下一個巨任務（Macrotask）。微任務中產生的新微任務也會在同一輪被處理。
+</Callout>
+
+## 經典面試題：執行順序
+
+### 基本題
+
+```js
+console.log('1');
+
+setTimeout(() => {
+  console.log('2');
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log('3');
+});
+
+console.log('4');
+
+// 輸出：1, 4, 3, 2
+// 解析：
+// 同步：1, 4
+// 微任務：3（Promise）
+// 巨任務：2（setTimeout）
+```
+
+### 進階題
+
+```js
+console.log('start');
+
+setTimeout(() => {
+  console.log('timeout 1');
+  Promise.resolve().then(() => {
+    console.log('promise inside timeout');
+  });
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log('promise 1');
+  setTimeout(() => {
+    console.log('timeout inside promise');
+  }, 0);
+}).then(() => {
+  console.log('promise 2');
+});
+
+setTimeout(() => {
+  console.log('timeout 2');
+}, 0);
+
+console.log('end');
+
+// 輸出：
+// start
+// end
+// promise 1
+// promise 2
+// timeout 1
+// promise inside timeout
+// timeout 2
+// timeout inside promise
+```
+
+### 解析流程
+
+```
+第一輪：
+  同步：start, end
+  微任務：promise 1 → 微任務鏈續：promise 2
+  （setTimeout 排入巨任務佇列）
+
+第二輪：
+  巨任務：timeout 1
+  微任務：promise inside timeout
+
+第三輪：
+  巨任務：timeout 2
+
+第四輪：
+  巨任務：timeout inside promise
+```
+
+## queueMicrotask
+
+`queueMicrotask` 直接將回呼加入微任務佇列：
+
+```js
+console.log('1');
+
+queueMicrotask(() => {
+  console.log('2 - microtask');
+});
+
+Promise.resolve().then(() => {
+  console.log('3 - promise');
+});
+
+setTimeout(() => {
+  console.log('4 - timeout');
+}, 0);
+
+console.log('5');
+
+// 輸出：1, 5, 2, 3, 4
+// queueMicrotask 和 Promise.then 都是微任務，按順序執行
+```
+
+## requestAnimationFrame
+
+`requestAnimationFrame`（rAF）在瀏覽器下一次重繪之前執行，通常用於動畫：
+
+```js
+// rAF 的執行時機介於微任務和下一個巨任務之間
+// 執行順序：同步 → 微任務 → rAF → 瀏覽器渲染 → 巨任務
+
+function animate() {
+  element.style.transform = `translateX(${position}px)`;
+  position += 2;
+  if (position < 300) {
+    requestAnimationFrame(animate); // 約 60fps
+  }
+}
+requestAnimationFrame(animate);
+
+// 取消動畫
+const animId = requestAnimationFrame(callback);
+cancelAnimationFrame(animId);
+```
+
+<Callout type="tip" title="動畫效能">
+比起 `setTimeout` 或 `setInterval`，`requestAnimationFrame` 與瀏覽器的渲染週期同步，能確保流暢的 60fps 動畫。當頁面不可見時，rAF 會自動暫停以節省資源。
+</Callout>
+
+## 微任務的陷阱
+
+```js
+// 危險！無限微任務會阻塞渲染
+function infiniteMicrotask() {
+  Promise.resolve().then(() => {
+    infiniteMicrotask(); // 不斷產生新微任務
+  });
+}
+// 呼叫後頁面會完全卡死！
+// 因為微任務在每一輪都會被完全清空，瀏覽器永遠無法進入渲染階段
+
+// 解決：改用 setTimeout 讓出控制權
+function safeRecursion() {
+  // 做一些工作...
+  setTimeout(safeRecursion, 0); // 巨任務，讓瀏覽器有機會渲染
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="事件迴圈執行順序實驗"
+  defaultJS={`// === 基本執行順序 ===
+console.log('=== 基本測試 ===');
+console.log('[同步] 1');
+
+setTimeout(() => console.log('[巨任務] setTimeout'), 0);
+
+Promise.resolve()
+  .then(() => console.log('[微任務] Promise 1'))
+  .then(() => console.log('[微任務] Promise 2'));
+
+queueMicrotask(() => console.log('[微任務] queueMicrotask'));
+
+console.log('[同步] 2');
+
+// 預期：同步1, 同步2, Promise1, queueMicrotask, Promise2, setTimeout
+
+// === 進階測試（延遲執行以隔離結果） ===
+setTimeout(() => {
+  console.log('\\n=== 進階測試 ===');
+
+  console.log('[同步] A');
+
+  setTimeout(() => {
+    console.log('[巨任務] timeout 1');
+    queueMicrotask(() => {
+      console.log('[微任務] 巨任務中的微任務');
+    });
+  }, 0);
+
+  Promise.resolve().then(() => {
+    console.log('[微任務] promise 1');
+    return Promise.resolve();
+  }).then(() => {
+    console.log('[微任務] promise 2');
+  });
+
+  setTimeout(() => {
+    console.log('[巨任務] timeout 2');
+  }, 0);
+
+  console.log('[同步] B');
+}, 200);
+
+// === setTimeout 精確度測試 ===
+setTimeout(() => {
+  console.log('\\n=== setTimeout 精確度 ===');
+  const start = performance.now();
+  setTimeout(() => {
+    const elapsed = (performance.now() - start).toFixed(1);
+    console.log('setTimeout(0) 實際延遲: ' + elapsed + 'ms');
+  }, 0);
+
+  // 微任務排在 setTimeout 之前
+  Promise.resolve().then(() => {
+    const elapsed = (performance.now() - start).toFixed(1);
+    console.log('Promise.then 延遲: ' + elapsed + 'ms');
+  });
+}, 500);`}
+/>
+
+## 總結
+
+| 類型 | 範例 | 優先級 |
+|------|------|--------|
+| 同步程式碼 | 一般語句 | 最高 |
+| 微任務 | Promise.then、queueMicrotask | 高 |
+| rAF | requestAnimationFrame | 中 |
+| 巨任務 | setTimeout、setInterval | 低 |
+
+理解事件迴圈後，你就能精確預測任何非同步程式碼的執行順序。下一章我們將學習 DOM 操作，把 JavaScript 的能力應用到網頁上。

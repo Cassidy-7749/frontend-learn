@@ -1,0 +1,341 @@
+# Promise 與 async/await
+
+JavaScript 是單執行緒語言，非同步程式設計是處理 I/O 操作（網路請求、檔案讀取、計時器等）的關鍵。從 callback 到 Promise 再到 async/await，非同步模式不斷演進。
+
+## Callback Hell（回呼地獄）
+
+在 Promise 出現之前，非同步操作透過回呼函式（callback）處理，多層嵌套形成「回呼地獄」：
+
+```js
+// 模擬非同步操作
+function fetchUser(id, callback) {
+  setTimeout(() => callback({ id, name: 'Alice' }), 100);
+}
+function fetchOrders(userId, callback) {
+  setTimeout(() => callback([{ id: 1, item: 'Book' }]), 100);
+}
+function fetchDetails(orderId, callback) {
+  setTimeout(() => callback({ price: 299 }), 100);
+}
+
+// 回呼地獄 — 層層嵌套，難以維護
+fetchUser(1, (user) => {
+  fetchOrders(user.id, (orders) => {
+    fetchDetails(orders[0].id, (details) => {
+      console.log(details.price);
+      // 更多嵌套...
+    });
+  });
+});
+```
+
+<Callout type="warning" title="回呼地獄的問題">
+回呼地獄不僅是縮排問題，更嚴重的是：錯誤處理困難、流程控制複雜、程式碼難以測試和重用。Promise 的出現正是為了解決這些問題。
+</Callout>
+
+## Promise 三種狀態
+
+Promise 是一個代表非同步操作最終結果的物件，具有三種狀態：
+
+- **Pending**（待定）：初始狀態，操作尚未完成
+- **Fulfilled**（已實現）：操作成功完成
+- **Rejected**（已拒絕）：操作失敗
+
+```js
+// 建立 Promise
+const promise = new Promise((resolve, reject) => {
+  const success = true;
+  if (success) {
+    resolve('操作成功！'); // 狀態變為 Fulfilled
+  } else {
+    reject('操作失敗');    // 狀態變為 Rejected
+  }
+});
+
+// 狀態一旦改變就不可逆
+// Pending → Fulfilled 或 Pending → Rejected
+```
+
+## then / catch / finally
+
+```js
+function fetchData(url) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      if (url) {
+        resolve({ data: '回傳資料', url });
+      } else {
+        reject(new Error('URL 不能為空'));
+      }
+    }, 1000);
+  });
+}
+
+fetchData('/api/users')
+  .then(result => {
+    console.log('成功：', result);
+    return result.data; // 回傳值傳給下一個 then
+  })
+  .then(data => {
+    console.log('處理資料：', data);
+  })
+  .catch(error => {
+    console.error('錯誤：', error.message);
+  })
+  .finally(() => {
+    console.log('不論成功或失敗都會執行');
+  });
+```
+
+### Promise 鏈（Chaining）
+
+```js
+// 用 Promise 鏈解決回呼地獄
+function fetchUser(id) {
+  return new Promise(resolve =>
+    setTimeout(() => resolve({ id, name: 'Alice' }), 100)
+  );
+}
+function fetchOrders(userId) {
+  return new Promise(resolve =>
+    setTimeout(() => resolve([{ id: 1, item: 'Book' }]), 100)
+  );
+}
+
+fetchUser(1)
+  .then(user => fetchOrders(user.id))
+  .then(orders => console.log(orders))
+  .catch(err => console.error(err));
+```
+
+## Promise 靜態方法
+
+### Promise.all
+
+所有 Promise 都成功才 resolve，任一失敗就 reject：
+
+```js
+const p1 = fetch('/api/users');
+const p2 = fetch('/api/posts');
+const p3 = fetch('/api/comments');
+
+Promise.all([p1, p2, p3])
+  .then(([users, posts, comments]) => {
+    console.log('全部完成');
+  })
+  .catch(error => {
+    console.log('其中之一失敗', error);
+  });
+```
+
+### Promise.race
+
+最先完成的 Promise（無論成功或失敗）決定結果：
+
+```js
+const timeout = new Promise((_, reject) =>
+  setTimeout(() => reject(new Error('Timeout')), 5000)
+);
+const request = fetch('/api/data');
+
+Promise.race([request, timeout])
+  .then(response => console.log('在時限內完成'))
+  .catch(error => console.log('逾時或失敗'));
+```
+
+### Promise.allSettled
+
+等待所有 Promise 完成（不管成功或失敗），回傳每個結果的狀態：
+
+```js
+const promises = [
+  Promise.resolve('成功 A'),
+  Promise.reject('失敗 B'),
+  Promise.resolve('成功 C')
+];
+
+Promise.allSettled(promises).then(results => {
+  results.forEach(result => {
+    if (result.status === 'fulfilled') {
+      console.log('✓', result.value);
+    } else {
+      console.log('✗', result.reason);
+    }
+  });
+});
+// ✓ 成功 A
+// ✗ 失敗 B
+// ✓ 成功 C
+```
+
+<Callout type="tip" title="如何選擇 Promise 靜態方法">
+**Promise.all** — 所有都必須成功（例如載入頁面所需的所有資料）。**Promise.race** — 取最快的結果（例如設定逾時機制）。**Promise.allSettled** — 需要知道每一個的結果（例如批次操作的報告）。**Promise.any** — 任一成功就行（例如從多個鏡像站取資料）。
+</Callout>
+
+## async / await
+
+`async/await` 是 Promise 的語法糖，讓非同步程式碼看起來像同步的：
+
+```js
+// async 函式自動回傳 Promise
+async function fetchUserData(id) {
+  // await 暫停執行，直到 Promise resolve
+  const user = await fetchUser(id);
+  const orders = await fetchOrders(user.id);
+  return { user, orders };
+}
+
+// 等同於：
+function fetchUserData(id) {
+  return fetchUser(id)
+    .then(user => fetchOrders(user.id)
+      .then(orders => ({ user, orders }))
+    );
+}
+```
+
+### 平行執行
+
+```js
+// ✗ 串行 — 較慢
+async function slow() {
+  const users = await fetch('/api/users');   // 等待完成...
+  const posts = await fetch('/api/posts');   // 再等待...
+  return { users, posts };
+}
+
+// ✓ 平行 — 較快
+async function fast() {
+  const [users, posts] = await Promise.all([
+    fetch('/api/users'),
+    fetch('/api/posts')
+  ]);
+  return { users, posts };
+}
+```
+
+## 錯誤處理
+
+### try/catch
+
+```js
+async function fetchData() {
+  try {
+    const response = await fetch('/api/data');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('取得資料失敗：', error.message);
+    return null; // 提供預設值
+  } finally {
+    console.log('請求結束');
+  }
+}
+```
+
+### 封裝錯誤處理
+
+```js
+// 通用的錯誤處理包裝
+async function safeAsync(asyncFn) {
+  try {
+    const data = await asyncFn();
+    return [data, null];
+  } catch (error) {
+    return [null, error];
+  }
+}
+
+// 使用方式
+const [data, error] = await safeAsync(() => fetch('/api/data'));
+if (error) {
+  console.error('失敗：', error);
+} else {
+  console.log('成功：', data);
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="Promise 與 async/await 實驗"
+  defaultJS={`// 模擬非同步操作
+function delay(ms, value) {
+  return new Promise(resolve =>
+    setTimeout(() => resolve(value), ms)
+  );
+}
+
+function delayReject(ms, reason) {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(reason), ms)
+  );
+}
+
+// === Promise 鏈 ===
+console.log('開始 Promise 鏈...');
+delay(100, '步驟一')
+  .then(v => { console.log(v); return delay(100, '步驟二'); })
+  .then(v => { console.log(v); return delay(100, '步驟三'); })
+  .then(v => { console.log(v); console.log('鏈完成！'); })
+  .then(() => {
+    console.log('---');
+
+    // === Promise.all ===
+    console.log('Promise.all 開始...');
+    return Promise.all([
+      delay(100, '任務 A'),
+      delay(200, '任務 B'),
+      delay(150, '任務 C'),
+    ]);
+  })
+  .then(results => {
+    console.log('全部完成:', results);
+    console.log('---');
+
+    // === Promise.allSettled ===
+    console.log('Promise.allSettled 開始...');
+    return Promise.allSettled([
+      delay(100, '成功 1'),
+      delayReject(100, '失敗 2'),
+      delay(100, '成功 3'),
+    ]);
+  })
+  .then(results => {
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') {
+        console.log('  [' + i + '] 成功:', r.value);
+      } else {
+        console.log('  [' + i + '] 失敗:', r.reason);
+      }
+    });
+    console.log('---');
+
+    // === async/await（用 IIFE） ===
+    return (async () => {
+      console.log('async/await 開始...');
+      try {
+        const a = await delay(100, '非同步結果 A');
+        console.log('await:', a);
+
+        const b = await delay(100, '非同步結果 B');
+        console.log('await:', b);
+
+        // 平行執行
+        const [c, d] = await Promise.all([
+          delay(100, '平行 C'),
+          delay(100, '平行 D')
+        ]);
+        console.log('平行:', c, d);
+      } catch (err) {
+        console.error('錯誤:', err);
+      }
+      console.log('async/await 完成！');
+    })();
+  });`}
+/>
+
+了解 Promise 之後，我們需要深入理解 JavaScript 的事件迴圈（Event Loop），才能真正掌握非同步程式碼的執行順序。

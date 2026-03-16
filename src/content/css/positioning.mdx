@@ -1,0 +1,348 @@
+# 定位
+
+CSS `position` 屬性控制元素在頁面上的放置方式。搭配 `top`、`right`、`bottom`、`left` 和 `z-index`，可以實現各種定位需求，從固定導覽列到浮動按鈕。
+
+## position 的五種值
+
+### static（預設）
+
+所有元素預設為 `static`，遵循正常的文檔流。`top`、`right`、`bottom`、`left` 和 `z-index` 對 `static` 元素無效。
+
+```css
+.element {
+  position: static; /* 預設值，通常不需要特別寫出 */
+}
+```
+
+### relative（相對定位）
+
+元素仍然佔據原本在文檔流中的位置，但可以透過 `top`、`right`、`bottom`、`left` 偏移。偏移不影響其他元素的佈局。
+
+```css
+.element {
+  position: relative;
+  top: 10px;    /* 向下偏移 10px */
+  left: 20px;   /* 向右偏移 20px */
+}
+```
+
+<Callout type="tip" title="relative 的常見用途">
+`relative` 最常見的用途並非偏移自身，而是作為子元素 `absolute` 定位的參考容器。設定 `position: relative` 即可讓子元素以該元素為基準定位。
+</Callout>
+
+### absolute（絕對定位）
+
+元素脫離文檔流，相對於最近的非 `static` 祖先元素定位。如果沒有這樣的祖先，則相對於 `<html>`。
+
+```css
+.parent {
+  position: relative; /* 成為定位參考 */
+}
+
+.child {
+  position: absolute;
+  top: 0;
+  right: 0;     /* 固定在 parent 的右上角 */
+}
+```
+
+### fixed（固定定位）
+
+元素脫離文檔流，相對於視窗（viewport）定位。即使頁面滾動，元素也保持在視窗的固定位置。
+
+```css
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+```
+
+<Callout type="warning" title="fixed 定位的陷阱">
+當祖先元素有 `transform`、`filter` 或 `perspective` 屬性時，`fixed` 定位會改為相對於該祖先元素而非視窗。這是常見的 bug 來源。
+</Callout>
+
+### sticky（黏性定位）
+
+元素在正常文檔流中，直到滾動到指定閾值時「黏住」：
+
+```css
+.sticky-header {
+  position: sticky;
+  top: 0;       /* 當捲動到頂部時黏住 */
+  z-index: 10;
+}
+```
+
+`sticky` 的行為：
+- 在閾值之前：表現如 `relative`
+- 達到閾值後：表現如 `fixed`
+- 只在其父容器範圍內有效
+
+```css
+/* 也可以用於側邊欄 */
+.sidebar-widget {
+  position: sticky;
+  top: 80px; /* 距離頂部 80px 時黏住 */
+}
+```
+
+## z-index 與堆疊上下文
+
+### z-index 基礎
+
+`z-index` 控制重疊元素的前後順序，值越大越靠前。僅對非 `static` 定位的元素有效。
+
+```css
+.behind  { z-index: 1; position: relative; }
+.in-front { z-index: 10; position: relative; }
+```
+
+### 堆疊上下文（Stacking Context）
+
+堆疊上下文是一個獨立的 z-index 空間。在一個堆疊上下文內的 `z-index` 不會影響外部的疊層。
+
+以下情況會建立新的堆疊上下文：
+- 根元素 `<html>`
+- `position` 非 `static` 且 `z-index` 非 `auto`
+- `opacity` 小於 1
+- `transform` 不為 `none`
+- `filter` 不為 `none`
+- `isolation: isolate`
+- `will-change` 指定了上述任一屬性
+
+```css
+/* 這個容器建立了新的堆疊上下文 */
+.context {
+  position: relative;
+  z-index: 1;
+}
+
+/* 即使 z-index 很大，也無法超過外部的其他堆疊上下文 */
+.context .child {
+  position: absolute;
+  z-index: 99999; /* 只在 .context 內部有效 */
+}
+```
+
+<Callout type="tip" title="使用 isolation 建立堆疊上下文">
+當你只想建立新的堆疊上下文而不需要定位時，使用 `isolation: isolate` 是最乾淨的方式，不會產生副作用。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="CSS 定位方式比較"
+  defaultHTML={`<div class="demo-container">
+  <div class="box static-box">
+    static<br>(預設)
+  </div>
+
+  <div class="box relative-box">
+    relative<br>(top: 20px, left: 20px)
+    <span class="ghost">原始位置</span>
+  </div>
+
+  <div class="parent-box">
+    <span class="label">parent (relative)</span>
+    <div class="box absolute-box">
+      absolute<br>(top: 10px, right: 10px)
+    </div>
+  </div>
+
+  <div class="box fixed-demo">
+    fixed<br>(右下角)
+  </div>
+</div>
+
+<h3>z-index 堆疊示範</h3>
+<div class="stack-demo">
+  <div class="layer layer-1">z-index: 1</div>
+  <div class="layer layer-2">z-index: 2</div>
+  <div class="layer layer-3">z-index: 3</div>
+</div>`}
+  defaultCSS={`.demo-container {
+  position: relative;
+  min-height: 200px;
+  background: #f5f5f5;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.box {
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: bold;
+  color: white;
+  margin-bottom: 8px;
+  width: fit-content;
+}
+
+.static-box {
+  background: #9E9E9E;
+}
+
+.relative-box {
+  position: relative;
+  top: 20px;
+  left: 20px;
+  background: #2196F3;
+}
+
+.ghost {
+  position: absolute;
+  top: 0;
+  left: -20px;
+  margin-top: -20px;
+  border: 2px dashed #90CAF9;
+  padding: 12px;
+  border-radius: 6px;
+  color: #90CAF9;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.parent-box {
+  position: relative;
+  background: #FFF3E0;
+  border: 2px solid #FF9800;
+  border-radius: 8px;
+  padding: 16px;
+  height: 80px;
+  margin-top: 20px;
+}
+
+.parent-box .label {
+  font-size: 12px;
+  color: #E65100;
+}
+
+.absolute-box {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #FF9800;
+  margin: 0;
+}
+
+.fixed-demo {
+  position: absolute; /* 在 playground 裡用 absolute 模擬 */
+  bottom: 10px;
+  right: 10px;
+  background: #F44336;
+  margin: 0;
+}
+
+/* z-index 堆疊 */
+.stack-demo {
+  position: relative;
+  height: 140px;
+  margin-top: 8px;
+}
+
+.layer {
+  position: absolute;
+  width: 160px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: white;
+  border-radius: 8px;
+  border: 2px solid rgba(0,0,0,0.2);
+}
+
+.layer-1 {
+  background: #F44336;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+}
+
+.layer-2 {
+  background: #4CAF50;
+  top: 30px;
+  left: 60px;
+  z-index: 2;
+}
+
+.layer-3 {
+  background: #2196F3;
+  top: 50px;
+  left: 110px;
+  z-index: 3;
+}
+
+h3 { margin: 16px 0 8px; }`}
+  defaultJS={``}
+/>
+
+## 常見定位模式
+
+### 覆蓋層（Overlay）
+
+```css
+.overlay {
+  position: fixed;
+  inset: 0;          /* top: 0; right: 0; bottom: 0; left: 0 的縮寫 */
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+```
+
+### 徽章 / 通知數字
+
+```css
+.icon-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: red;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+```
+
+### 固定側邊欄 + 可捲動內容
+
+```css
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 250px;
+  height: 100vh;
+  overflow-y: auto;
+}
+.content {
+  margin-left: 250px;
+}
+```
+
+## inset 縮寫
+
+`inset` 是 `top`、`right`、`bottom`、`left` 的縮寫屬性：
+
+```css
+.element {
+  inset: 0;                    /* 四邊都是 0 */
+  inset: 10px 20px;            /* 上下 10px, 左右 20px */
+  inset: 10px 20px 30px 40px;  /* 上、右、下、左 */
+}
+```

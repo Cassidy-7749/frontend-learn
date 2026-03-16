@@ -1,0 +1,225 @@
+# 基礎元素、屬性與語意化 HTML
+
+HTML（HyperText Markup Language）是建構網頁的基礎語言。了解元素的分類、屬性的使用，以及語意化標籤的重要性，是每位前端開發者必備的基本功。
+
+## HTML 元素分類
+
+HTML 元素主要可以分為兩大類：**區塊元素（Block Elements）** 和 **行內元素（Inline Elements）**。
+
+### 區塊元素（Block Elements）
+
+區塊元素會佔據父容器的整個寬度，並在前後產生換行。常見的區塊元素包括：
+
+- `<div>` — 通用容器
+- `<p>` — 段落
+- `<h1>` ~ `<h6>` — 標題
+- `<ul>`、`<ol>`、`<li>` — 清單
+- `<table>` — 表格
+- `<form>` — 表單
+
+### 行內元素（Inline Elements）
+
+行內元素只佔據其內容所需的寬度，不會產生換行。常見的行內元素包括：
+
+- `<span>` — 通用行內容器
+- `<a>` — 超連結
+- `<strong>` — 強調（粗體）
+- `<em>` — 強調（斜體）
+- `<img>` — 圖片
+- `<code>` — 程式碼片段
+
+<Callout type="info" title="資訊">
+在 HTML5 中，元素的分類更加細緻，包括 Flow content、Phrasing content、Sectioning content 等。但理解區塊與行內的概念仍然是基礎中的基礎。
+</Callout>
+
+## 常用屬性
+
+HTML 元素可以透過屬性來提供額外的資訊或控制行為。
+
+### 全域屬性
+
+這些屬性可以用在任何 HTML 元素上：
+
+| 屬性 | 說明 | 範例 |
+|------|------|------|
+| `id` | 唯一識別符 | `<div id="app">` |
+| `class` | CSS 類別名稱 | `<p class="highlight">` |
+| `style` | 行內樣式 | `<span style="color:red">` |
+| `title` | 提示文字 | `<abbr title="HyperText Markup Language">HTML</abbr>` |
+| `hidden` | 隱藏元素 | `<div hidden>` |
+| `tabindex` | 鍵盤焦點順序 | `<div tabindex="0">` |
+
+### data-* 自訂資料屬性
+
+`data-*` 屬性讓你可以在 HTML 元素上儲存自訂資料，方便在 JavaScript 中存取：
+
+```html
+<article data-author="Alice" data-category="tech" data-id="42">
+  <h2>文章標題</h2>
+</article>
+```
+
+在 JavaScript 中可以透過 `dataset` 來讀取：
+
+```js
+const article = document.querySelector('article');
+console.log(article.dataset.author);   // "Alice"
+console.log(article.dataset.category); // "tech"
+```
+
+## 語意化 HTML 標籤
+
+HTML5 引入了許多語意化標籤，讓我們可以用更有意義的方式來描述頁面結構。
+
+### 主要的語意化標籤
+
+- **`<header>`** — 頁面或區塊的頭部，通常包含導覽列、標題或 logo。
+- **`<nav>`** — 導覽區域，包含主要的導覽連結。
+- **`<main>`** — 頁面的主要內容，一個頁面只應有一個 `<main>`。
+- **`<article>`** — 獨立的內容區塊，例如一篇文章或一則評論。
+- **`<section>`** — 主題性的內容分組，通常有自己的標題。
+- **`<aside>`** — 側邊欄或與主要內容相關的附屬內容。
+- **`<footer>`** — 頁面或區塊的底部，通常包含版權資訊或聯絡方式。
+
+### 為什麼要用語意化 HTML？
+
+1. **可讀性更佳**：語意化標籤讓程式碼更容易閱讀和維護。看到 `<nav>` 就知道是導覽區，而不需要去解讀 `<div class="nav">`。
+
+2. **SEO 友善**：搜尋引擎能更準確地理解頁面結構與內容的重要性。
+
+3. **無障礙支援**：螢幕閱讀器可以利用語意化標籤來幫助視障使用者更好地瀏覽網頁。
+
+4. **開發效率**：團隊協作時，語意化的程式碼減少了溝通成本。
+
+<Callout type="tip" title="提示">
+一個簡單的判斷原則：如果你只是為了排版而使用元素，用 `<div>` 或 `<span>`。如果元素的內容有明確的語意意義，請使用對應的語意化標籤。
+</Callout>
+
+## 語意化 vs 非語意化對比
+
+以下是一個實際的對比範例，左邊使用純 `<div>`，右邊使用語意化標籤：
+
+<CodePlayground
+  title="語意化 HTML 對比範例"
+  defaultHTML={`<!-- 非語意化寫法 -->
+<div class="page-bad">
+  <h3>❌ 非語意化寫法</h3>
+  <div class="header-div">
+    <div class="logo">My Site</div>
+    <div class="nav-div">
+      <a href="#">首頁</a>
+      <a href="#">關於</a>
+      <a href="#">聯絡</a>
+    </div>
+  </div>
+  <div class="main-div">
+    <div class="article-div">
+      <h4>文章標題</h4>
+      <p>文章內容...</p>
+    </div>
+    <div class="sidebar-div">
+      <p>側邊欄內容</p>
+    </div>
+  </div>
+  <div class="footer-div">
+    <p>© 2025 My Site</p>
+  </div>
+</div>
+
+<hr style="margin: 2rem 0;" />
+
+<!-- 語意化寫法 -->
+<div class="page-good">
+  <h3>✅ 語意化寫法</h3>
+  <header>
+    <div class="logo">My Site</div>
+    <nav>
+      <a href="#">首頁</a>
+      <a href="#">關於</a>
+      <a href="#">聯絡</a>
+    </nav>
+  </header>
+  <main>
+    <article>
+      <h4>文章標題</h4>
+      <p>文章內容...</p>
+    </article>
+    <aside>
+      <p>側邊欄內容</p>
+    </aside>
+  </main>
+  <footer>
+    <p>© 2025 My Site</p>
+  </footer>
+</div>`}
+  defaultCSS={`* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: sans-serif; padding: 1rem; }
+
+.page-bad, .page-good {
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.page-good { border-color: #4caf50; }
+.page-bad { border-color: #f44336; }
+
+header, .header-div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: #f5f5f5;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+nav a, .nav-div a {
+  margin-left: 1rem;
+  text-decoration: none;
+  color: #1976d2;
+}
+main, .main-div {
+  display: flex;
+  gap: 1rem;
+  margin: 0.5rem 0;
+}
+article, .article-div { flex: 2; }
+aside, .sidebar-div {
+  flex: 1;
+  background: #fafafa;
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+footer, .footer-div {
+  text-align: center;
+  padding: 0.5rem;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #666;
+}
+h3 { margin-bottom: 0.75rem; }
+.logo { font-weight: bold; font-size: 1.1rem; }`}
+  defaultJS={``}
+/>
+
+## 其他實用的語意化標籤
+
+除了頁面結構標籤外，還有一些內容層級的語意化標籤值得認識：
+
+- **`<figure>` 和 `<figcaption>`** — 用於圖片、圖表等附帶說明的內容。
+- **`<time>`** — 表示日期或時間，例如 `<time datetime="2025-01-01">元旦</time>`。
+- **`<mark>`** — 標記或高亮文字。
+- **`<details>` 和 `<summary>`** — 可展開/收合的內容區塊。
+- **`<address>`** — 聯絡資訊。
+
+<Callout type="warning" title="注意">
+`<b>` 和 `<strong>` 雖然視覺效果相似（都是粗體），但語意不同。`<strong>` 表示「重要性」，螢幕閱讀器會用不同的語氣朗讀；`<b>` 只是視覺上的粗體，沒有額外語意。同理，`<i>` 和 `<em>` 也有類似的差異。
+</Callout>
+
+## 總結
+
+- 理解區塊元素與行內元素的差異，是 CSS 排版的基礎。
+- 善用 `data-*` 屬性來儲存自訂資料，保持 HTML 的乾淨。
+- 語意化 HTML 不只是「好的習慣」，更是 SEO、無障礙和團隊協作的重要基石。
+- 選擇正確的標籤，讓你的程式碼更具可讀性和可維護性。

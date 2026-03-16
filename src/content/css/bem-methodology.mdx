@@ -1,0 +1,360 @@
+# BEM 與 CSS 方法論
+
+隨著專案規模增長，CSS 的可維護性成為重大挑戰。CSS 方法論提供了一套命名和組織規則，讓團隊能寫出一致、可預測、易維護的樣式。BEM 是其中最廣泛使用的方法論。
+
+## BEM 命名規則
+
+BEM 代表 **Block__Element--Modifier**，是由 Yandex 提出的命名規範。
+
+### Block（區塊）
+
+獨立的、有意義的元件。可以被重複使用，不依賴其他元件。
+
+```css
+.card { }
+.navbar { }
+.search-form { }
+.button { }
+```
+
+### Element（元素）
+
+Block 的組成部分，無法脫離 Block 獨立存在。使用雙底線 `__` 連接。
+
+```css
+.card__title { }
+.card__image { }
+.card__body { }
+.card__footer { }
+.search-form__input { }
+.search-form__button { }
+```
+
+### Modifier（修飾符）
+
+用來表示 Block 或 Element 的不同狀態或變體。使用雙連字號 `--` 連接。
+
+```css
+/* Block 修飾符 */
+.card--featured { }
+.card--horizontal { }
+.button--primary { }
+.button--large { }
+
+/* Element 修飾符 */
+.card__title--highlighted { }
+.nav__link--active { }
+```
+
+### BEM 完整範例
+
+```html
+<article class="card card--featured">
+  <img class="card__image" src="..." alt="...">
+  <div class="card__body">
+    <h2 class="card__title">文章標題</h2>
+    <p class="card__description">這是描述文字...</p>
+    <div class="card__actions">
+      <button class="button button--primary">閱讀更多</button>
+      <button class="button button--secondary">儲存</button>
+    </div>
+  </div>
+</article>
+```
+
+```css
+.card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card--featured {
+  border-color: #2196F3;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.2);
+}
+
+.card__image {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+}
+
+.card__body { padding: 16px; }
+.card__title { margin: 0 0 8px; }
+.card__description { color: #666; line-height: 1.6; }
+.card__actions { display: flex; gap: 8px; margin-top: 16px; }
+```
+
+<Callout type="tip" title="BEM 核心原則">
+BEM 的關鍵在於：(1) 只使用 class 選擇器，避免 ID 和巢狀 (2) 每個 class 的優先級相同（0,0,1,0），避免優先級戰爭 (3) 從名稱就能看出元素的結構關係。
+</Callout>
+
+### BEM 常見問題
+
+**Element 不要巢狀超過一層：**
+
+```css
+/* 不好 — 巢狀太深 */
+.card__body__title__icon { }
+
+/* 好 — 元素都直接屬於 Block */
+.card__title-icon { }
+```
+
+**Element 可以在 Block 的任何層級：**
+
+```html
+<!-- 正確：card__title 直接屬於 card，即使 DOM 有巢狀 -->
+<div class="card">
+  <div class="card__body">
+    <h2 class="card__title">標題</h2>
+  </div>
+</div>
+```
+
+<Callout type="warning" title="何時不適合 BEM">
+BEM 命名可能會很長（如 `search-form__submit-button--disabled`），在小型專案或原型開發中可能過於繁瑣。在使用 CSS Modules 或 CSS-in-JS 的專案中，BEM 的命名空間功能已由工具自動處理，BEM 就不那麼必要。
+</Callout>
+
+## OOCSS（物件導向 CSS）
+
+OOCSS 由 Nicole Sullivan 提出，核心原則是：
+
+### 1. 結構與外觀分離
+
+```css
+/* 結構 */
+.box { padding: 16px; margin-bottom: 16px; border-radius: 8px; }
+
+/* 外觀 */
+.box--blue { background: #E3F2FD; border: 1px solid #90CAF9; }
+.box--green { background: #E8F5E9; border: 1px solid #A5D6A7; }
+```
+
+### 2. 容器與內容分離
+
+```css
+/* 不好：樣式依賴位置 */
+.sidebar h3 { font-size: 14px; }
+
+/* 好：獨立的 class */
+.heading--small { font-size: 14px; }
+```
+
+## SMACSS
+
+SMACSS（Scalable and Modular Architecture for CSS）將 CSS 分為五個類別：
+
+| 類別 | 前綴 | 說明 | 範例 |
+|------|------|------|------|
+| Base | 無 | 預設元素樣式 | `html, body, a, h1` |
+| Layout | `l-` | 頁面大區塊 | `.l-header`, `.l-sidebar` |
+| Module | 無 | 可重用元件 | `.card`, `.navbar` |
+| State | `is-` | 元素狀態 | `.is-active`, `.is-hidden` |
+| Theme | `t-` | 主題相關 | `.t-dark`, `.t-primary` |
+
+```css
+/* Layout */
+.l-sidebar { width: 250px; float: left; }
+
+/* Module */
+.card { border: 1px solid #ddd; border-radius: 8px; }
+
+/* State */
+.is-active { font-weight: bold; color: #2196F3; }
+.is-hidden { display: none; }
+```
+
+## CSS Modules vs CSS-in-JS
+
+### CSS Modules
+
+CSS Modules 在編譯時自動將 class 名稱轉換為唯一的識別碼，從根本上解決命名衝突：
+
+```css
+/* Button.module.css */
+.button { padding: 10px 20px; }
+.primary { background: blue; }
+```
+
+```jsx
+import styles from './Button.module.css';
+
+function Button() {
+  return <button className={`${styles.button} ${styles.primary}`}>Click</button>;
+}
+// 產生：<button class="Button_button_x7h2k Button_primary_a3b4c">
+```
+
+### CSS-in-JS
+
+在 JavaScript 中撰寫 CSS，代表工具有 styled-components 和 Emotion：
+
+```jsx
+// styled-components
+const Button = styled.button`
+  padding: 10px 20px;
+  background: ${props => props.primary ? 'blue' : 'gray'};
+  color: white;
+  border-radius: 6px;
+`;
+
+// 使用
+<Button primary>Click me</Button>
+```
+
+### 比較
+
+| 特性 | BEM | CSS Modules | CSS-in-JS |
+|------|-----|-------------|-----------|
+| 命名衝突 | 靠規範避免 | 自動解決 | 自動解決 |
+| 學習成本 | 低 | 低 | 中 |
+| 動態樣式 | 需搭配 JS | 有限 | 原生支援 |
+| 效能 | 佳 | 佳 | 有運行時開銷 |
+| Bundle 大小 | 依規模 | 優化 | 較大 |
+| 工具依賴 | 無 | 需建構工具 | 需建構工具 |
+
+## 互動範例
+
+<CodePlayground
+  title="BEM 命名實踐"
+  defaultHTML={`<!-- BEM 結構範例 -->
+<div class="user-card user-card--premium">
+  <img class="user-card__avatar"
+    src="https://api.dicebear.com/7.x/initials/svg?seed=AB"
+    alt="使用者頭像">
+  <div class="user-card__info">
+    <h3 class="user-card__name">Alice Chen</h3>
+    <p class="user-card__role user-card__role--admin">管理員</p>
+  </div>
+  <div class="user-card__actions">
+    <button class="btn btn--primary btn--small">訊息</button>
+    <button class="btn btn--outline btn--small">追蹤</button>
+  </div>
+</div>
+
+<div class="user-card">
+  <img class="user-card__avatar"
+    src="https://api.dicebear.com/7.x/initials/svg?seed=CD"
+    alt="使用者頭像">
+  <div class="user-card__info">
+    <h3 class="user-card__name">Bob Lin</h3>
+    <p class="user-card__role">一般會員</p>
+  </div>
+  <div class="user-card__actions">
+    <button class="btn btn--primary btn--small">訊息</button>
+    <button class="btn btn--outline btn--small">追蹤</button>
+  </div>
+</div>`}
+  defaultCSS={`body {
+  font-family: sans-serif;
+  padding: 16px;
+  background: #f5f5f5;
+}
+
+/* ===== Block: user-card ===== */
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
+  margin-bottom: 12px;
+  transition: border-color 0.2s;
+}
+
+/* Modifier: premium 版本 */
+.user-card--premium {
+  border-color: #FFD700;
+  background: linear-gradient(135deg, #fff, #fffde7);
+}
+
+/* Element: 頭像 */
+.user-card__avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #e0e0e0;
+}
+
+/* Element: 資訊區 */
+.user-card__info {
+  flex: 1;
+}
+
+/* Element: 名稱 */
+.user-card__name {
+  margin: 0;
+  font-size: 16px;
+}
+
+/* Element: 角色 */
+.user-card__role {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #888;
+}
+
+/* Element + Modifier: 管理員角色 */
+.user-card__role--admin {
+  color: #E91E63;
+  font-weight: bold;
+}
+
+/* Element: 操作區 */
+.user-card__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ===== Block: btn ===== */
+.btn {
+  padding: 8px 16px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.btn--primary {
+  background: #2196F3;
+  color: white;
+}
+.btn--primary:hover {
+  background: #1976D2;
+}
+
+.btn--outline {
+  background: transparent;
+  border-color: #2196F3;
+  color: #2196F3;
+}
+.btn--outline:hover {
+  background: #E3F2FD;
+}
+
+.btn--small {
+  padding: 6px 12px;
+  font-size: 12px;
+}`}
+  defaultJS={``}
+/>
+
+## 選擇哪種方法論？
+
+| 場景 | 推薦 |
+|------|------|
+| 傳統多頁網站 | BEM + SMACSS |
+| React / Vue 專案 | CSS Modules 或 Tailwind CSS |
+| 需要動態主題 | CSS-in-JS 或 CSS 變數 |
+| 設計系統 / 元件庫 | BEM + CSS 變數 |
+| 快速原型開發 | Tailwind CSS |
+
+<Callout type="tip" title="方法論是指南，不是教條">
+沒有完美的方法論。重要的是團隊一致遵守同一套規則。在實際專案中，常常會混合使用多種方法論的理念，例如 BEM 的命名 + SMACSS 的分類 + CSS 變數的主題管理。
+</Callout>

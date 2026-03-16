@@ -1,0 +1,460 @@
+# 效能優化
+
+前端效能直接影響使用者體驗與業務指標。研究顯示，頁面載入每延遲一秒，轉換率可能下降 7%。本篇涵蓋從渲染到互動的各種效能優化技術。
+
+## 關鍵渲染路徑
+
+瀏覽器從收到 HTML 到首次繪製畫面的過程稱為關鍵渲染路徑（Critical Rendering Path）：
+
+```
+HTML → DOM 樹
+              ↘
+                → Render 樹 → 佈局（Layout） → 繪製（Paint） → 合成（Composite）
+              ↗
+CSS  → CSSOM 樹
+```
+
+### 優化策略
+
+```html
+<!-- 關鍵 CSS 內聯 -->
+<style>
+  /* 首屏需要的 CSS 直接內聯 */
+  .hero { display: flex; align-items: center; }
+</style>
+
+<!-- 非關鍵 CSS 延遲載入 -->
+<link rel="preload" href="styles.css" as="style" onload="this.rel='stylesheet'">
+
+<!-- JavaScript 非阻塞載入 -->
+<script defer src="app.js"></script>  <!-- DOM 解析完成後執行 -->
+<script async src="analytics.js"></script>  <!-- 下載完立即執行 -->
+
+<!-- 預載入關鍵資源 -->
+<link rel="preload" href="hero.webp" as="image">
+<link rel="preconnect" href="https://api.example.com">
+```
+
+<Callout type="info" title="defer vs async">
+`defer`：在 DOM 解析完成後、DOMContentLoaded 事件前，按順序執行。適合應用主程式。`async`：下載完立即執行，順序不保證。適合獨立的分析腳本。
+</Callout>
+
+### 減少重排（Reflow）與重繪（Repaint）
+
+```js
+// 不好：多次觸發重排
+const el = document.getElementById('box');
+el.style.width = '100px';   // 重排
+el.style.height = '200px';  // 重排
+el.style.margin = '10px';   // 重排
+
+// 好：批次修改
+el.style.cssText = 'width:100px; height:200px; margin:10px;';
+
+// 或使用 class
+el.classList.add('new-layout');
+
+// 讀寫分離：避免強制同步佈局
+// 不好
+for (const el of elements) {
+  const height = el.offsetHeight; // 讀取 → 強制重排
+  el.style.height = height * 2 + 'px'; // 寫入
+}
+
+// 好：先讀後寫
+const heights = elements.map(el => el.offsetHeight);
+elements.forEach((el, i) => {
+  el.style.height = heights[i] * 2 + 'px';
+});
+```
+
+## 防抖（Debounce）
+
+防抖讓函式在事件停止觸發一段時間後才執行，適用於搜尋輸入、視窗縮放等場景：
+
+```js
+function debounce(fn, delay, immediate = false) {
+  let timer = null;
+
+  return function (...args) {
+    const callNow = immediate && !timer;
+
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      if (!immediate) {
+        fn.apply(this, args);
+      }
+    }, delay);
+
+    if (callNow) {
+      fn.apply(this, args);
+    }
+  };
+}
+
+// 使用：搜尋輸入
+const searchInput = document.getElementById('search');
+searchInput.addEventListener(
+  'input',
+  debounce((e) => {
+    fetchSearchResults(e.target.value);
+  }, 300)
+);
+```
+
+## 節流（Throttle）
+
+節流確保函式在指定時間間隔內最多執行一次，適用於滾動、拖曳等高頻事件：
+
+```js
+function throttle(fn, interval) {
+  let lastTime = 0;
+  let timer = null;
+
+  return function (...args) {
+    const now = Date.now();
+
+    if (now - lastTime >= interval) {
+      lastTime = now;
+      fn.apply(this, args);
+    } else {
+      // 確保最後一次觸發也會執行
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        lastTime = Date.now();
+        fn.apply(this, args);
+      }, interval - (now - lastTime));
+    }
+  };
+}
+
+// 使用：滾動事件
+window.addEventListener(
+  'scroll',
+  throttle(() => {
+    updateScrollPosition();
+  }, 100)
+);
+```
+
+<Callout type="tip" title="何時用防抖，何時用節流？">
+**防抖**：使用者停止操作後才執行（搜尋輸入、表單驗證、視窗 resize 完成後重新計算佈局）。**節流**：操作過程中定期執行（捲動時更新 UI、拖曳元素、遊戲中的按鍵偵測）。
+</Callout>
+
+## 懶載入（Lazy Loading）
+
+### 圖片懶載入
+
+```html
+<!-- 瀏覽器原生支援 -->
+<img src="image.jpg" loading="lazy" alt="延遲載入的圖片">
+
+<!-- 搭配 IntersectionObserver -->
+<img data-src="image.jpg" class="lazy" alt="觀察者懶載入">
+```
+
+```js
+// 使用 IntersectionObserver 實現
+const lazyImages = document.querySelectorAll('img.lazy');
+const imageObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const img = entry.target;
+      img.src = img.dataset.src;
+      img.classList.remove('lazy');
+      imageObserver.unobserve(img);
+    }
+  });
+}, { rootMargin: '200px' });
+
+lazyImages.forEach(img => imageObserver.observe(img));
+```
+
+### 程式碼懶載入
+
+```js
+// 動態 import — 路由層級的程式碼分割
+const routes = {
+  '/dashboard': () => import('./pages/Dashboard.js'),
+  '/settings': () => import('./pages/Settings.js'),
+};
+
+async function navigate(path) {
+  const loadModule = routes[path];
+  if (loadModule) {
+    const module = await loadModule();
+    module.default.render();
+  }
+}
+```
+
+## 虛擬滾動
+
+當列表有成千上萬個項目時，只渲染可視區域內的元素：
+
+```js
+class VirtualScroller {
+  constructor(container, items, itemHeight) {
+    this.container = container;
+    this.items = items;
+    this.itemHeight = itemHeight;
+    this.visibleCount = Math.ceil(container.clientHeight / itemHeight) + 2;
+
+    this.container.style.overflow = 'auto';
+    this.container.style.position = 'relative';
+
+    // 建立佔位元素撐開滾動高度
+    this.spacer = document.createElement('div');
+    this.spacer.style.height = items.length * itemHeight + 'px';
+    this.container.appendChild(this.spacer);
+
+    // 內容容器
+    this.content = document.createElement('div');
+    this.content.style.position = 'absolute';
+    this.content.style.top = '0';
+    this.content.style.width = '100%';
+    this.container.appendChild(this.content);
+
+    this.container.addEventListener('scroll', () => this.render());
+    this.render();
+  }
+
+  render() {
+    const scrollTop = this.container.scrollTop;
+    const startIndex = Math.floor(scrollTop / this.itemHeight);
+    const endIndex = Math.min(startIndex + this.visibleCount, this.items.length);
+
+    this.content.style.transform = `translateY(${startIndex * this.itemHeight}px)`;
+    this.content.innerHTML = '';
+
+    for (let i = startIndex; i < endIndex; i++) {
+      const el = document.createElement('div');
+      el.style.height = this.itemHeight + 'px';
+      el.textContent = this.items[i];
+      this.content.appendChild(el);
+    }
+  }
+}
+```
+
+## Web Workers
+
+將 CPU 密集型任務移到背景執行緒，避免阻塞主執行緒：
+
+```js
+// main.js
+const worker = new Worker('worker.js');
+
+worker.postMessage({ type: 'sort', data: hugeArray });
+
+worker.onmessage = (event) => {
+  console.log('排序完成:', event.data);
+};
+
+worker.onerror = (error) => {
+  console.error('Worker 錯誤:', error);
+};
+
+// 用完後終止
+// worker.terminate();
+```
+
+```js
+// worker.js
+self.onmessage = (event) => {
+  const { type, data } = event.data;
+
+  if (type === 'sort') {
+    const sorted = data.sort((a, b) => a - b);
+    self.postMessage(sorted);
+  }
+};
+```
+
+### 內聯 Worker（Inline Worker）
+
+```js
+function createInlineWorker(fn) {
+  const blob = new Blob(
+    [`self.onmessage = function(e) { self.postMessage((${fn.toString()})(e.data)); }`],
+    { type: 'application/javascript' }
+  );
+  return new Worker(URL.createObjectURL(blob));
+}
+
+const worker = createInlineWorker((data) => {
+  // 在背景執行的運算
+  return data.reduce((sum, n) => sum + n, 0);
+});
+
+worker.postMessage([1, 2, 3, 4, 5]);
+worker.onmessage = (e) => console.log('總和:', e.data); // 15
+```
+
+## requestIdleCallback
+
+在瀏覽器空閒時執行低優先級的任務：
+
+```js
+function processLargeData(data) {
+  let index = 0;
+
+  function processChunk(deadline) {
+    // deadline.timeRemaining() 回傳剩餘可用時間（毫秒）
+    while (index < data.length && deadline.timeRemaining() > 0) {
+      processItem(data[index]);
+      index++;
+    }
+
+    if (index < data.length) {
+      // 還有未處理的資料，等下一個空閒時段
+      requestIdleCallback(processChunk);
+    } else {
+      console.log('全部處理完成');
+    }
+  }
+
+  requestIdleCallback(processChunk, { timeout: 2000 });
+}
+```
+
+<Callout type="warning" title="requestIdleCallback 注意事項">
+不要在 `requestIdleCallback` 中修改 DOM（會觸發重排）。如需更新 UI，請在回呼中使用 `requestAnimationFrame` 排程 DOM 操作。Safari 目前不支援此 API，需要使用 polyfill。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="防抖 vs 節流 效果比較"
+  defaultHTML={`<div id="app">
+  <h3>防抖 vs 節流 比較</h3>
+  <p>在下方輸入框中快速輸入文字，觀察三種觸發方式的差異：</p>
+  <input id="testInput" placeholder="快速輸入文字..." style="width:100%;padding:10px;box-sizing:border-box;font-size:16px;border:2px solid #3b82f6;border-radius:6px;">
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px;">
+    <div>
+      <h4 style="color:#ef4444;">即時（無優化）</h4>
+      <div id="rawCount" style="font-size:24px;font-weight:bold;">0</div>
+      <pre id="rawLog" style="background:#fef2f2;padding:8px;border-radius:4px;height:120px;overflow-y:auto;font-size:12px;"></pre>
+    </div>
+    <div>
+      <h4 style="color:#f59e0b;">防抖 300ms</h4>
+      <div id="debounceCount" style="font-size:24px;font-weight:bold;">0</div>
+      <pre id="debounceLog" style="background:#fffbeb;padding:8px;border-radius:4px;height:120px;overflow-y:auto;font-size:12px;"></pre>
+    </div>
+    <div>
+      <h4 style="color:#10b981;">節流 300ms</h4>
+      <div id="throttleCount" style="font-size:24px;font-weight:bold;">0</div>
+      <pre id="throttleLog" style="background:#ecfdf5;padding:8px;border-radius:4px;height:120px;overflow-y:auto;font-size:12px;"></pre>
+    </div>
+  </div>
+
+  <button id="resetBtn" style="margin-top:12px;">重置計數</button>
+</div>`}
+  defaultCSS={`#app { font-family: sans-serif; }
+h4 { margin: 0 0 4px; }
+button {
+  padding: 8px 16px;
+  border: none;
+  background: #6b7280;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #4b5563; }`}
+  defaultJS={`// 防抖函式
+function debounce(fn, delay) {
+  let timer = null;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// 節流函式
+function throttle(fn, interval) {
+  let lastTime = 0;
+  return function (...args) {
+    const now = Date.now();
+    if (now - lastTime >= interval) {
+      lastTime = now;
+      fn.apply(this, args);
+    }
+  };
+}
+
+let rawCount = 0;
+let debounceCountVal = 0;
+let throttleCountVal = 0;
+
+const rawCountEl = document.getElementById('rawCount');
+const debounceCountEl = document.getElementById('debounceCount');
+const throttleCountEl = document.getElementById('throttleCount');
+const rawLog = document.getElementById('rawLog');
+const debounceLog = document.getElementById('debounceLog');
+const throttleLog = document.getElementById('throttleLog');
+
+function getTime() {
+  return new Date().toLocaleTimeString('en', { hour12: false }) +
+    '.' + String(Date.now() % 1000).padStart(3, '0');
+}
+
+// 即時觸發
+function onRawInput(value) {
+  rawCount++;
+  rawCountEl.textContent = rawCount;
+  rawLog.textContent += getTime() + ' → ' + value + '\\n';
+  rawLog.scrollTop = rawLog.scrollHeight;
+}
+
+// 防抖觸發
+const onDebounceInput = debounce((value) => {
+  debounceCountVal++;
+  debounceCountEl.textContent = debounceCountVal;
+  debounceLog.textContent += getTime() + ' → ' + value + '\\n';
+  debounceLog.scrollTop = debounceLog.scrollHeight;
+}, 300);
+
+// 節流觸發
+const onThrottleInput = throttle((value) => {
+  throttleCountVal++;
+  throttleCountEl.textContent = throttleCountVal;
+  throttleLog.textContent += getTime() + ' → ' + value + '\\n';
+  throttleLog.scrollTop = throttleLog.scrollHeight;
+}, 300);
+
+// 監聽輸入
+document.getElementById('testInput').addEventListener('input', (e) => {
+  const value = e.target.value;
+  onRawInput(value);
+  onDebounceInput(value);
+  onThrottleInput(value);
+});
+
+// 重置
+document.getElementById('resetBtn').addEventListener('click', () => {
+  rawCount = debounceCountVal = throttleCountVal = 0;
+  rawCountEl.textContent = debounceCountEl.textContent = throttleCountEl.textContent = '0';
+  rawLog.textContent = debounceLog.textContent = throttleLog.textContent = '';
+  document.getElementById('testInput').value = '';
+});`}
+/>
+
+## 效能指標
+
+| 指標 | 全名 | 說明 | 目標值 |
+|------|------|------|--------|
+| LCP | Largest Contentful Paint | 最大內容繪製 | < 2.5s |
+| FID | First Input Delay | 首次輸入延遲 | < 100ms |
+| CLS | Cumulative Layout Shift | 累積佈局偏移 | < 0.1 |
+| TTFB | Time to First Byte | 首位元組時間 | < 800ms |
+| INP | Interaction to Next Paint | 互動到下次繪製 | < 200ms |
+
+## 最佳實踐
+
+1. **測量先行**：使用 Lighthouse、WebPageTest 等工具找出瓶頸再優化
+2. **減少主執行緒工作**：耗時任務使用 Web Worker 或 requestIdleCallback
+3. **善用快取**：Service Worker、HTTP 快取、記憶化（memoization）
+4. **圖片優化**：使用 WebP/AVIF 格式、適當尺寸、懶載入
+5. **程式碼分割**：按路由分割，避免首次載入過多 JavaScript

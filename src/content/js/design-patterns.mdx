@@ -1,0 +1,471 @@
+# 設計模式
+
+設計模式是解決常見軟體設計問題的經典方案。在 JavaScript 中，由於語言本身的靈活性（函式是一等公民、原型繼承、動態型別），許多設計模式的實現比傳統 OOP 語言更加簡潔。
+
+## 單例模式（Singleton）
+
+確保一個類別只有一個實例，並提供全域存取點：
+
+```js
+// 方法一：使用閉包
+const Database = (() => {
+  let instance = null;
+
+  class DatabaseConnection {
+    constructor() {
+      this.connection = 'connected';
+    }
+    query(sql) {
+      return `執行: ${sql}`;
+    }
+  }
+
+  return {
+    getInstance() {
+      if (!instance) {
+        instance = new DatabaseConnection();
+      }
+      return instance;
+    },
+  };
+})();
+
+const db1 = Database.getInstance();
+const db2 = Database.getInstance();
+console.log(db1 === db2); // true
+```
+
+```js
+// 方法二：使用 class（更現代）
+class AppConfig {
+  static #instance = null;
+
+  #settings = {};
+
+  constructor() {
+    if (AppConfig.#instance) {
+      return AppConfig.#instance;
+    }
+    AppConfig.#instance = this;
+  }
+
+  set(key, value) {
+    this.#settings[key] = value;
+  }
+
+  get(key) {
+    return this.#settings[key];
+  }
+}
+
+const config1 = new AppConfig();
+const config2 = new AppConfig();
+console.log(config1 === config2); // true
+```
+
+<Callout type="info" title="模組即單例">
+在 ESM 模組系統中，每個模組只會被執行一次，匯出的值在所有引入處共享。因此直接 `export` 一個物件實例就是天然的單例模式。
+</Callout>
+
+## 觀察者模式（Observer / Pub-Sub）
+
+定義物件間的一對多依賴關係。當一個物件狀態改變時，所有依賴它的物件都會收到通知：
+
+### 觀察者模式（Observer）
+
+```js
+class EventEmitter {
+  constructor() {
+    this.events = new Map();
+  }
+
+  on(event, handler) {
+    if (!this.events.has(event)) {
+      this.events.set(event, []);
+    }
+    this.events.get(event).push(handler);
+    return this; // 支援鏈式呼叫
+  }
+
+  off(event, handler) {
+    const handlers = this.events.get(event);
+    if (handlers) {
+      this.events.set(event, handlers.filter(h => h !== handler));
+    }
+    return this;
+  }
+
+  emit(event, ...args) {
+    const handlers = this.events.get(event);
+    if (handlers) {
+      handlers.forEach(handler => handler(...args));
+    }
+    return this;
+  }
+
+  once(event, handler) {
+    const wrapper = (...args) => {
+      handler(...args);
+      this.off(event, wrapper);
+    };
+    return this.on(event, wrapper);
+  }
+}
+```
+
+### 發佈-訂閱模式（Pub-Sub）
+
+Pub-Sub 與 Observer 的區別在於有一個中央事件通道，發佈者和訂閱者互不知道對方：
+
+```js
+class PubSub {
+  static #channels = new Map();
+
+  static subscribe(channel, handler) {
+    if (!this.#channels.has(channel)) {
+      this.#channels.set(channel, []);
+    }
+    this.#channels.get(channel).push(handler);
+
+    // 回傳取消訂閱函式
+    return () => {
+      const handlers = this.#channels.get(channel);
+      const index = handlers.indexOf(handler);
+      if (index > -1) handlers.splice(index, 1);
+    };
+  }
+
+  static publish(channel, data) {
+    const handlers = this.#channels.get(channel);
+    if (handlers) {
+      handlers.forEach(handler => handler(data));
+    }
+  }
+}
+```
+
+<Callout type="tip" title="實際應用場景">
+觀察者模式在前端無處不在：DOM 事件系統、Vue 的響應式系統、Redux 的 store.subscribe()、Node.js 的 EventEmitter 都是觀察者模式的實現。
+</Callout>
+
+## 工廠模式（Factory）
+
+封裝物件的建立邏輯，根據條件動態決定要建立哪種物件：
+
+```js
+// 簡單工廠
+class Notification {
+  constructor(type, message) {
+    this.type = type;
+    this.message = message;
+  }
+}
+
+class NotificationFactory {
+  static create(type, message) {
+    switch (type) {
+      case 'success':
+        return new Notification(type, `✅ ${message}`);
+      case 'error':
+        return new Notification(type, `❌ ${message}`);
+      case 'warning':
+        return new Notification(type, `⚠️ ${message}`);
+      default:
+        return new Notification('info', `ℹ️ ${message}`);
+    }
+  }
+}
+
+const notice = NotificationFactory.create('success', '操作成功');
+```
+
+```js
+// 抽象工廠 — 建立一組相關的物件
+class UIFactory {
+  createButton() {}
+  createInput() {}
+  createSelect() {}
+}
+
+class MaterialUIFactory extends UIFactory {
+  createButton(label) {
+    return { type: 'material-button', label, ripple: true };
+  }
+  createInput(placeholder) {
+    return { type: 'material-input', placeholder, underline: true };
+  }
+}
+
+class AntDesignFactory extends UIFactory {
+  createButton(label) {
+    return { type: 'ant-button', label, ghost: false };
+  }
+  createInput(placeholder) {
+    return { type: 'ant-input', placeholder, bordered: true };
+  }
+}
+
+function createUI(factory) {
+  return {
+    button: factory.createButton('送出'),
+    input: factory.createInput('請輸入...'),
+  };
+}
+```
+
+## 策略模式（Strategy）
+
+定義一系列演算法，將每個演算法封裝起來，使它們可以互相替換：
+
+```js
+// 表單驗證策略
+const validationStrategies = {
+  required: (value) => {
+    return value.trim() !== '' ? null : '此欄位為必填';
+  },
+  email: (value) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+      ? null
+      : '請輸入有效的電子郵件';
+  },
+  minLength: (min) => (value) => {
+    return value.length >= min ? null : `至少需要 ${min} 個字元`;
+  },
+  maxLength: (max) => (value) => {
+    return value.length <= max ? null : `最多只能 ${max} 個字元`;
+  },
+};
+
+class FormValidator {
+  #rules = new Map();
+
+  addRule(field, ...strategies) {
+    this.#rules.set(field, strategies);
+    return this;
+  }
+
+  validate(data) {
+    const errors = {};
+    for (const [field, strategies] of this.#rules) {
+      for (const strategy of strategies) {
+        const error = strategy(data[field] || '');
+        if (error) {
+          errors[field] = error;
+          break; // 第一個失敗就停止
+        }
+      }
+    }
+    return {
+      isValid: Object.keys(errors).length === 0,
+      errors,
+    };
+  }
+}
+
+// 使用
+const validator = new FormValidator()
+  .addRule('name', validationStrategies.required, validationStrategies.minLength(2))
+  .addRule('email', validationStrategies.required, validationStrategies.email);
+
+validator.validate({ name: 'A', email: 'invalid' });
+// { isValid: false, errors: { name: '至少需要 2 個字元', email: '請輸入有效的電子郵件' } }
+```
+
+## 代理模式（Proxy）
+
+為物件提供一個代理，控制對該物件的存取。JavaScript 的 `Proxy` 內建完美支援：
+
+```js
+// 驗證代理
+function createValidatedObject(target, schema) {
+  return new Proxy(target, {
+    set(obj, prop, value) {
+      const validator = schema[prop];
+      if (validator && !validator(value)) {
+        throw new TypeError(`屬性 ${prop} 的值 ${value} 不合法`);
+      }
+      obj[prop] = value;
+      return true;
+    },
+  });
+}
+
+const user = createValidatedObject({}, {
+  age: (v) => typeof v === 'number' && v >= 0 && v <= 150,
+  name: (v) => typeof v === 'string' && v.length > 0,
+});
+
+user.name = 'Alice'; // OK
+user.age = 25;       // OK
+// user.age = -1;    // TypeError!
+```
+
+```js
+// 快取代理
+function createCachedFunction(fn) {
+  const cache = new Map();
+
+  return new Proxy(fn, {
+    apply(target, thisArg, args) {
+      const key = JSON.stringify(args);
+      if (cache.has(key)) {
+        console.log('快取命中');
+        return cache.get(key);
+      }
+      const result = target.apply(thisArg, args);
+      cache.set(key, result);
+      return result;
+    },
+  });
+}
+
+const expensiveCalc = createCachedFunction((n) => {
+  console.log('計算中...');
+  return n * n;
+});
+
+expensiveCalc(5); // 計算中... 25
+expensiveCalc(5); // 快取命中 25
+```
+
+## 互動範例
+
+<CodePlayground
+  title="觀察者模式與發佈-訂閱模式"
+  defaultHTML={`<div id="app">
+  <h3>觀察者模式示範</h3>
+
+  <div style="display:flex;gap:12px;margin-bottom:12px;">
+    <div style="flex:1;border:1px solid #ccc;padding:8px;border-radius:6px;">
+      <h4>發佈端</h4>
+      <input id="msgInput" placeholder="輸入訊息" style="width:90%;padding:6px;margin-bottom:6px;">
+      <select id="channel" style="width:95%;padding:6px;margin-bottom:6px;">
+        <option value="news">新聞頻道</option>
+        <option value="sports">體育頻道</option>
+        <option value="tech">科技頻道</option>
+      </select>
+      <button id="publishBtn">發佈訊息</button>
+    </div>
+    <div style="flex:1;border:1px solid #ccc;padding:8px;border-radius:6px;">
+      <h4>訂閱管理</h4>
+      <label><input type="checkbox" id="subNews" checked> 新聞</label><br>
+      <label><input type="checkbox" id="subSports" checked> 體育</label><br>
+      <label><input type="checkbox" id="subTech"> 科技</label>
+    </div>
+  </div>
+
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:80px;max-height:200px;overflow-y:auto;"></pre>
+</div>`}
+  defaultCSS={`#app { font-family: sans-serif; }
+h4 { margin: 0 0 8px; }
+button {
+  padding: 6px 14px;
+  border: none;
+  background: #8b5cf6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #7c3aed; }
+input[type="text"], input[type="search"] {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}`}
+  defaultJS={`const output = document.getElementById('output');
+function log(msg) {
+  output.textContent += msg + '\\n';
+  output.scrollTop = output.scrollHeight;
+}
+
+// 實現 EventEmitter
+class EventEmitter {
+  constructor() {
+    this.events = new Map();
+  }
+
+  on(event, handler) {
+    if (!this.events.has(event)) {
+      this.events.set(event, []);
+    }
+    this.events.get(event).push(handler);
+    return () => this.off(event, handler);
+  }
+
+  off(event, handler) {
+    const handlers = this.events.get(event);
+    if (handlers) {
+      this.events.set(event, handlers.filter(h => h !== handler));
+    }
+  }
+
+  emit(event, ...args) {
+    const handlers = this.events.get(event);
+    if (handlers) {
+      handlers.forEach(h => h(...args));
+    }
+  }
+}
+
+// 建立事件中心
+const pubsub = new EventEmitter();
+const unsubscribers = {};
+
+// 訂閱處理
+function handleMessage(channel) {
+  return (msg) => {
+    const time = new Date().toLocaleTimeString();
+    log('[' + time + '] [' + channel + '] ' + msg);
+  };
+}
+
+// 初始化訂閱
+function setupSubscription(channel, checkboxId) {
+  const checkbox = document.getElementById(checkboxId);
+
+  function updateSub() {
+    if (checkbox.checked) {
+      const handler = handleMessage(channel);
+      unsubscribers[channel] = pubsub.on(channel, handler);
+      log('已訂閱: ' + channel);
+    } else {
+      if (unsubscribers[channel]) {
+        unsubscribers[channel]();
+        delete unsubscribers[channel];
+        log('已取消訂閱: ' + channel);
+      }
+    }
+  }
+
+  checkbox.addEventListener('change', updateSub);
+  if (checkbox.checked) updateSub();
+}
+
+setupSubscription('news', 'subNews');
+setupSubscription('sports', 'subSports');
+setupSubscription('tech', 'subTech');
+
+// 發佈
+document.getElementById('publishBtn').addEventListener('click', () => {
+  const msg = document.getElementById('msgInput').value || '(空訊息)';
+  const channel = document.getElementById('channel').value;
+  pubsub.emit(channel, msg);
+  document.getElementById('msgInput').value = '';
+});
+
+log('=== 觀察者模式示範 ===');
+log('勾選頻道進行訂閱，然後發佈訊息觀察效果');`}
+/>
+
+## 設計模式選擇指南
+
+| 場景 | 推薦模式 |
+|------|---------|
+| 全域唯一的服務 | 單例模式（或直接用模組匯出） |
+| 事件驅動、跨元件通訊 | 觀察者/Pub-Sub |
+| 動態建立物件 | 工廠模式 |
+| 可切換的演算法/驗證規則 | 策略模式 |
+| 存取控制、快取、日誌 | 代理模式 |
+
+<Callout type="warning" title="不要過度設計">
+設計模式是工具而非目標。只在真正需要時才使用，過度設計會增加程式碼的複雜度。先寫出能運作的程式碼，當發現重複或擴展困難時，再考慮引入合適的設計模式。
+</Callout>

@@ -1,0 +1,358 @@
+# CSS 變數（Custom Properties）
+
+CSS 自訂屬性（Custom Properties），通稱 CSS 變數，讓我們能在樣式表中定義可重用的值。搭配 `var()` 函式取用，支援作用域、繼承，甚至可以透過 JavaScript 動態修改。
+
+## 基本語法
+
+### 定義變數
+
+CSS 變數以 `--` 開頭命名，定義在選擇器的規則區塊內：
+
+```css
+:root {
+  --primary-color: #2196F3;
+  --secondary-color: #FF9800;
+  --font-size-base: 16px;
+  --spacing-unit: 8px;
+  --border-radius: 8px;
+}
+```
+
+### 使用變數
+
+透過 `var()` 函式取用變數值：
+
+```css
+.button {
+  background: var(--primary-color);
+  font-size: var(--font-size-base);
+  padding: var(--spacing-unit) calc(var(--spacing-unit) * 2);
+  border-radius: var(--border-radius);
+}
+```
+
+### 預設值（Fallback）
+
+`var()` 接受第二個參數作為預設值，當變數不存在時使用：
+
+```css
+.element {
+  color: var(--text-color, #333);
+  font-size: var(--custom-size, var(--font-size-base, 16px));
+}
+```
+
+<Callout type="tip" title="命名慣例">
+建議使用語意化的命名方式，例如 `--color-primary` 而非 `--blue`，`--spacing-lg` 而非 `--20px`。這樣更換主題時只需改變數的值，不需改名。
+</Callout>
+
+## 作用域與繼承
+
+CSS 變數遵循正常的 CSS 繼承規則，子元素會繼承父元素定義的變數。
+
+### 全域變數
+
+定義在 `:root` 上的變數在整個文件中都可用：
+
+```css
+:root {
+  --global-color: blue;
+}
+```
+
+### 區域變數
+
+定義在特定選擇器上的變數只在該元素及其後代中有效：
+
+```css
+.card {
+  --card-padding: 16px;
+  --card-bg: white;
+  padding: var(--card-padding);
+  background: var(--card-bg);
+}
+
+.card.dark {
+  --card-bg: #333;   /* 覆蓋區域變數 */
+  color: white;
+}
+```
+
+### 作用域覆蓋
+
+內層的變數定義會覆蓋外層的同名變數：
+
+```css
+:root {
+  --text-color: #333;
+}
+
+.dark-section {
+  --text-color: #eee; /* 在此區域內覆蓋 */
+}
+
+p {
+  color: var(--text-color); /* 根據所在區域取得不同值 */
+}
+```
+
+<Callout type="warning" title="CSS 變數與 SASS 變數的差異">
+SASS 變數（`$variable`）在編譯時就被替換為固定值。CSS 變數是運行時的，可以在瀏覽器中動態改變，也能被 Media Query 和 JavaScript 操控。兩者用途不同，CSS 變數更適合主題切換等動態需求。
+</Callout>
+
+## 搭配 calc() 與其他函式
+
+CSS 變數可以在各種 CSS 函式中使用：
+
+```css
+:root {
+  --spacing: 8px;
+  --columns: 3;
+}
+
+.grid-item {
+  /* 搭配 calc() */
+  padding: calc(var(--spacing) * 2);
+  width: calc(100% / var(--columns) - var(--spacing));
+
+  /* 搭配 color 函式 */
+  background: hsl(var(--hue, 200), 80%, 50%);
+}
+```
+
+## 搭配 JavaScript 動態修改
+
+CSS 變數可以透過 JavaScript 即時讀取和修改：
+
+### 設定變數
+
+```javascript
+// 設定全域變數（在 :root 上）
+document.documentElement.style.setProperty('--primary-color', '#E91E63');
+
+// 設定區域變數（在特定元素上）
+element.style.setProperty('--card-bg', '#f0f0f0');
+```
+
+### 讀取變數
+
+```javascript
+// 讀取計算後的值
+const color = getComputedStyle(document.documentElement)
+  .getPropertyValue('--primary-color')
+  .trim();
+```
+
+### 移除變數
+
+```javascript
+document.documentElement.style.removeProperty('--primary-color');
+```
+
+## 主題切換實作
+
+CSS 變數最實用的場景之一就是深淺色主題切換：
+
+```css
+/* 淺色主題（預設） */
+:root {
+  --bg-color: #ffffff;
+  --text-color: #333333;
+  --card-bg: #f5f5f5;
+  --border-color: #e0e0e0;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 深色主題 */
+[data-theme="dark"] {
+  --bg-color: #1a1a2e;
+  --text-color: #e0e0e0;
+  --card-bg: #16213e;
+  --border-color: #2a2a4a;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 自動偵測系統偏好 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-color: #1a1a2e;
+    --text-color: #e0e0e0;
+    --card-bg: #16213e;
+    --border-color: #2a2a4a;
+  }
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="CSS 變數主題切換"
+  defaultHTML={`<div class="theme-container" id="app">
+  <div class="toolbar">
+    <h3>主題切換器</h3>
+    <div class="theme-buttons">
+      <button onclick="setTheme('light')">☀️ 淺色</button>
+      <button onclick="setTheme('dark')">🌙 深色</button>
+      <button onclick="setTheme('ocean')">🌊 海洋</button>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h4>卡片標題</h4>
+      <p>CSS 變數讓主題切換變得簡單優雅，只需修改幾個變數值。</p>
+      <button class="primary-btn">主要按鈕</button>
+    </div>
+    <div class="card">
+      <h4>自訂顏色</h4>
+      <p>
+        <label>主色調：
+          <input type="color" id="colorPicker" value="#2196F3"
+            onchange="changeColor(this.value)">
+        </label>
+      </p>
+      <button class="primary-btn">主要按鈕</button>
+    </div>
+  </div>
+</div>`}
+  defaultCSS={`/* 定義主題變數 */
+.theme-container {
+  --bg: #ffffff;
+  --text: #333333;
+  --card-bg: #f8f9fa;
+  --primary: #2196F3;
+  --primary-text: #ffffff;
+  --border: #e0e0e0;
+  --radius: 10px;
+
+  background: var(--bg);
+  color: var(--text);
+  padding: 16px;
+  border-radius: var(--radius);
+  min-height: 280px;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* 深色主題 */
+.theme-container.dark {
+  --bg: #1a1a2e;
+  --text: #e0e0e0;
+  --card-bg: #16213e;
+  --primary: #7c4dff;
+  --border: #2a2a4a;
+}
+
+/* 海洋主題 */
+.theme-container.ocean {
+  --bg: #e0f7fa;
+  --text: #004d40;
+  --card-bg: #b2ebf2;
+  --primary: #00897b;
+  --border: #80cbc4;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.toolbar h3 { margin: 0; }
+
+.theme-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-buttons button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.card h4 { margin: 0 0 8px; }
+.card p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+
+.primary-btn {
+  background: var(--primary);
+  color: var(--primary-text);
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+#colorPicker {
+  vertical-align: middle;
+  cursor: pointer;
+}`}
+  defaultJS={`function setTheme(theme) {
+  const app = document.getElementById('app');
+  app.className = 'theme-container ' + (theme === 'light' ? '' : theme);
+}
+
+function changeColor(color) {
+  document.getElementById('app').style.setProperty('--primary', color);
+}`}
+/>
+
+## 設計 Token 系統
+
+大型專案中可以用 CSS 變數建立設計 Token 系統：
+
+```css
+:root {
+  /* 原始值（Primitive Tokens） */
+  --blue-50: #e3f2fd;
+  --blue-500: #2196f3;
+  --blue-900: #0d47a1;
+  --gray-100: #f5f5f5;
+  --gray-900: #212121;
+
+  /* 語意化 Token（Semantic Tokens） */
+  --color-primary: var(--blue-500);
+  --color-background: var(--gray-100);
+  --color-text: var(--gray-900);
+
+  /* 元件級 Token（Component Tokens） */
+  --button-bg: var(--color-primary);
+  --button-radius: 8px;
+  --card-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+```
+
+<Callout type="tip" title="三層 Token 架構">
+Primitive → Semantic → Component 的三層架構讓主題切換只需修改 Semantic 層，而元件不需要任何更動。這也是大多數設計系統（如 Material Design）採用的模式。
+</Callout>
+
+## 瀏覽器支援
+
+CSS 自訂屬性在所有現代瀏覽器中都完全支援。若需支援舊瀏覽器，可以提供 fallback：
+
+```css
+.element {
+  color: #2196F3;            /* fallback */
+  color: var(--primary-color, #2196F3);
+}
+```

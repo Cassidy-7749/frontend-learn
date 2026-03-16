@@ -1,0 +1,340 @@
+# 模組系統
+
+模組系統是現代 JavaScript 開發的基石，它讓我們可以將程式碼分割成獨立、可重用的單元，避免命名衝突並提升可維護性。
+
+## 為什麼需要模組
+
+在模組系統出現之前，JavaScript 面臨幾個嚴重問題：
+
+```js
+// 傳統做法：所有東西都在全域作用域
+var utils = {};
+utils.formatDate = function (date) { /* ... */ };
+utils.parseUrl = function (url) { /* ... */ };
+
+// 問題一：命名衝突
+var utils = {}; // 不小心覆蓋了！
+
+// 問題二：依賴關係不明確
+// 必須手動確保 script 標籤的載入順序
+// <script src="jquery.js"></script>
+// <script src="plugin.js"></script>  <!-- 依賴 jQuery -->
+// <script src="app.js"></script>     <!-- 依賴 plugin -->
+
+// 問題三：無法按需載入
+```
+
+<Callout type="info" title="模組的核心價值">
+模組系統解決了三大問題：**命名空間隔離**（避免全域污染）、**依賴管理**（自動解析載入順序）、**程式碼重用**（import/export 明確的介面）。
+</Callout>
+
+## IIFE 模式（早期方案）
+
+在模組系統出現前，開發者使用立即執行函式來模擬模組：
+
+```js
+// 使用 IIFE 建立私有作用域
+var MyModule = (function () {
+  var privateVar = '私有變數';
+
+  function privateMethod() {
+    return privateVar;
+  }
+
+  return {
+    publicMethod: function () {
+      return privateMethod();
+    },
+  };
+})();
+
+console.log(MyModule.publicMethod()); // '私有變數'
+console.log(MyModule.privateVar);     // undefined
+```
+
+## CommonJS（require / module.exports）
+
+CommonJS 是 Node.js 採用的模組規範，使用 `require()` 載入模組、`module.exports` 匯出：
+
+```js
+// math.js — 匯出模組
+function add(a, b) {
+  return a + b;
+}
+
+function multiply(a, b) {
+  return a * b;
+}
+
+module.exports = { add, multiply };
+
+// 或者逐一匯出
+exports.subtract = function (a, b) {
+  return a - b;
+};
+```
+
+```js
+// app.js — 載入模組
+const math = require('./math');
+console.log(math.add(1, 2)); // 3
+
+// 解構引入
+const { add, multiply } = require('./math');
+console.log(multiply(3, 4)); // 12
+```
+
+### CommonJS 特性
+
+- **同步載入**：`require()` 是同步的，會阻塞後續程式碼
+- **值的拷貝**：引入的是模組匯出值的拷貝
+- **執行時載入**：模組在 `require()` 被呼叫時才執行
+- **快取機制**：模組只會在第一次 require 時執行，後續 require 返回快取
+
+```js
+// CommonJS 的快取行為
+// counter.js
+let count = 0;
+module.exports = {
+  increment: () => ++count,
+  getCount: () => count,
+};
+
+// 兩次 require 取得同一個模組實例
+const c1 = require('./counter');
+const c2 = require('./counter');
+c1.increment();
+console.log(c2.getCount()); // 1（共享同一個實例）
+```
+
+## ESM（import / export）
+
+ES Modules（ESM）是 ECMAScript 標準的模組系統，現代瀏覽器與 Node.js 都支援：
+
+### 具名匯出（Named Exports）
+
+```js
+// utils.js
+export const PI = 3.14159;
+
+export function formatDate(date) {
+  return date.toISOString().split('T')[0];
+}
+
+export class EventEmitter {
+  constructor() {
+    this.events = {};
+  }
+  on(event, handler) {
+    (this.events[event] ??= []).push(handler);
+  }
+  emit(event, ...args) {
+    this.events[event]?.forEach(fn => fn(...args));
+  }
+}
+```
+
+```js
+// app.js — 引入具名匯出
+import { PI, formatDate, EventEmitter } from './utils.js';
+
+// 重新命名
+import { formatDate as fmt } from './utils.js';
+
+// 引入所有匯出為命名空間物件
+import * as utils from './utils.js';
+console.log(utils.PI);
+```
+
+### 預設匯出（Default Export）
+
+```js
+// logger.js
+export default class Logger {
+  log(msg) {
+    console.log(`[LOG] ${msg}`);
+  }
+}
+
+// app.js — 引入預設匯出（名稱可自訂）
+import Logger from './logger.js';
+import MyLogger from './logger.js'; // 名稱隨意
+```
+
+### 混合使用
+
+```js
+// api.js
+export default class ApiClient { /* ... */ }
+export const BASE_URL = 'https://api.example.com';
+export function createClient(config) { /* ... */ }
+
+// app.js
+import ApiClient, { BASE_URL, createClient } from './api.js';
+```
+
+### 重新匯出（Re-export）
+
+```js
+// index.js — 統一匯出入口
+export { default as Logger } from './logger.js';
+export { formatDate, PI } from './utils.js';
+export * from './helpers.js';
+```
+
+## 動態 import()
+
+動態 `import()` 回傳 Promise，可用於延遲載入、條件載入：
+
+```js
+// 延遲載入（程式碼分割）
+async function loadChart() {
+  const { Chart } = await import('./chart.js');
+  return new Chart('#canvas');
+}
+
+// 條件載入
+async function loadLocale(lang) {
+  const messages = await import(`./locales/${lang}.js`);
+  return messages.default;
+}
+
+// 搭配使用者操作
+button.addEventListener('click', async () => {
+  const { openModal } = await import('./modal.js');
+  openModal();
+});
+```
+
+<Callout type="tip" title="動態 import 與打包工具">
+Webpack、Vite 等打包工具會自動將 `import()` 轉為程式碼分割點（code split point），產生獨立的 chunk 檔案，實現按需載入。
+</Callout>
+
+## CommonJS vs ESM 差異比較
+
+| 特性 | CommonJS | ESM |
+|------|----------|-----|
+| 語法 | `require()` / `module.exports` | `import` / `export` |
+| 載入方式 | 同步 | 非同步（靜態分析） |
+| 匯出 | 值的拷貝 | 即時綁定（live binding） |
+| 執行時機 | 動態（執行時解析） | 靜態（編譯時解析） |
+| Tree Shaking | 不支援 | 支援 |
+| 瀏覽器支援 | 不支援 | 支援（`type="module"`） |
+| 頂層 await | 不支援 | 支援 |
+
+### Live Binding 行為
+
+```js
+// ESM 的 live binding
+// counter.js
+export let count = 0;
+export function increment() { count++; }
+
+// app.js
+import { count, increment } from './counter.js';
+console.log(count); // 0
+increment();
+console.log(count); // 1（反映最新值）
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模組模式示範"
+  defaultHTML={`<div id="app">
+  <h3>模組模式模擬</h3>
+  <button id="iife">IIFE 模組</button>
+  <button id="revealing">揭露模組</button>
+  <button id="esm">ESM 風格</button>
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:80px;margin-top:12px;"></pre>
+</div>`}
+  defaultCSS={`button {
+  padding: 8px 14px;
+  margin: 4px;
+  border: none;
+  background: #8b5cf6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #7c3aed; }
+#app { font-family: sans-serif; }`}
+  defaultJS={`const output = document.getElementById('output');
+function log(msg) { output.textContent += msg + '\\n'; }
+
+// 1. IIFE 模組模式
+const Counter = (function () {
+  let count = 0; // 私有變數
+
+  return {
+    increment() { return ++count; },
+    decrement() { return --count; },
+    getCount() { return count; },
+  };
+})();
+
+document.getElementById('iife').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== IIFE 模組模式 ===');
+  log('count 是私有的，外部無法直接存取');
+  log('increment: ' + Counter.increment());
+  log('increment: ' + Counter.increment());
+  log('getCount: ' + Counter.getCount());
+  log('decrement: ' + Counter.decrement());
+  log('getCount: ' + Counter.getCount());
+});
+
+// 2. 揭露模組模式
+const Calculator = (function () {
+  function add(a, b) { return a + b; }
+  function multiply(a, b) { return a * b; }
+  function _validate(n) { return typeof n === 'number'; }
+
+  return { add, multiply }; // 只公開需要的方法
+})();
+
+document.getElementById('revealing').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== 揭露模組模式 ===');
+  log('add(3, 5) = ' + Calculator.add(3, 5));
+  log('multiply(4, 6) = ' + Calculator.multiply(4, 6));
+  log('_validate 是私有的: ' + (Calculator._validate === undefined));
+});
+
+// 3. ESM 風格模擬
+const ESMModule = (() => {
+  const exports = {};
+
+  // 具名匯出
+  exports.greet = (name) => 'Hello, ' + name;
+  exports.VERSION = '1.0.0';
+
+  // 預設匯出
+  exports.default = class App {
+    constructor() { this.name = 'MyApp'; }
+    run() { return this.name + ' is running'; }
+  };
+
+  return exports;
+})();
+
+document.getElementById('esm').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== ESM 風格模擬 ===');
+  const { greet, VERSION } = ESMModule;
+  const App = ESMModule.default;
+
+  log('greet: ' + greet('World'));
+  log('VERSION: ' + VERSION);
+  const app = new App();
+  log('App: ' + app.run());
+});`}
+/>
+
+## 最佳實踐
+
+1. **優先使用 ESM**：新專案應使用 `import/export`，支援 tree shaking 與靜態分析
+2. **每個模組單一職責**：一個模組只負責一件事
+3. **善用具名匯出**：比預設匯出更容易重構與搜尋
+4. **善用動態 import**：大型模組或不常用功能使用動態載入
+5. **避免循環依賴**：重新設計模組結構來消除循環引用

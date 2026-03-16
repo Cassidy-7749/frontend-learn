@@ -1,0 +1,396 @@
+# 動畫與過渡
+
+CSS 動畫讓網頁元素產生流暢的視覺效果，提升使用者體驗。CSS 提供兩種主要的動畫機制：`transition`（過渡）用於狀態間的簡單轉換，`animation`（動畫）用於更複雜的多步驟動畫。
+
+## Transition（過渡）
+
+`transition` 讓屬性值的改變產生平滑的過渡效果，通常搭配 `:hover`、`:focus` 或 JavaScript 的 class 切換使用。
+
+### 基本語法
+
+```css
+.element {
+  transition: property duration timing-function delay;
+}
+
+/* 範例 */
+.button {
+  background: #2196F3;
+  transition: background 0.3s ease;
+}
+
+.button:hover {
+  background: #1565C0;
+}
+```
+
+### 各屬性說明
+
+```css
+.element {
+  /* 要過渡的屬性（all = 全部） */
+  transition-property: background, transform, opacity;
+
+  /* 過渡持續時間 */
+  transition-duration: 0.3s;
+
+  /* 時間函數（加速曲線） */
+  transition-timing-function: ease;
+
+  /* 延遲時間 */
+  transition-delay: 0.1s;
+}
+```
+
+### 常用 timing-function
+
+| 值 | 效果 |
+|----|------|
+| `ease` | 預設，慢快慢 |
+| `linear` | 等速 |
+| `ease-in` | 慢入 |
+| `ease-out` | 慢出 |
+| `ease-in-out` | 慢入慢出 |
+| `cubic-bezier(n,n,n,n)` | 自訂曲線 |
+
+```css
+/* 自訂彈跳效果 */
+.bounce {
+  transition: transform 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+```
+
+<Callout type="tip" title="哪些屬性可以 transition？">
+只有具有中間值的屬性才能過渡，例如 `color`、`opacity`、`transform`、`width`、`height`、`padding` 等。`display`、`font-family` 這類離散值無法過渡。不過可以使用新的 `transition-behavior: allow-discrete` 來過渡 `display`。
+</Callout>
+
+## Transform（變形）
+
+`transform` 讓元素進行 2D 或 3D 變形，不影響文檔流：
+
+```css
+.element {
+  /* 位移 */
+  transform: translate(20px, 10px);
+  transform: translateX(50%);
+
+  /* 縮放 */
+  transform: scale(1.5);
+  transform: scale(1.2, 0.8);
+
+  /* 旋轉 */
+  transform: rotate(45deg);
+
+  /* 傾斜 */
+  transform: skew(10deg, 5deg);
+
+  /* 組合多個變形 */
+  transform: translate(-50%, -50%) scale(1.1) rotate(5deg);
+}
+```
+
+### 絕對居中技巧
+
+```css
+.centered {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+```
+
+## @keyframes 與 animation
+
+`@keyframes` 定義動畫的關鍵影格，`animation` 屬性控制動畫的播放：
+
+### 基本語法
+
+```css
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.element {
+  animation: slideIn 0.5s ease forwards;
+}
+```
+
+### 多步驟動畫
+
+```css
+@keyframes rainbow {
+  0%   { background: red; }
+  17%  { background: orange; }
+  33%  { background: yellow; }
+  50%  { background: green; }
+  67%  { background: blue; }
+  83%  { background: indigo; }
+  100% { background: violet; }
+}
+```
+
+### animation 屬性
+
+```css
+.element {
+  animation-name: slideIn;
+  animation-duration: 0.5s;
+  animation-timing-function: ease;
+  animation-delay: 0.2s;
+  animation-iteration-count: infinite; /* 或數字 */
+  animation-direction: alternate;      /* normal | reverse | alternate */
+  animation-fill-mode: forwards;       /* none | forwards | backwards | both */
+  animation-play-state: running;       /* running | paused */
+
+  /* 縮寫 */
+  animation: slideIn 0.5s ease 0.2s infinite alternate forwards;
+}
+```
+
+<Callout type="warning" title="animation-fill-mode 很重要">
+預設情況下，動畫結束後元素會回到初始狀態。使用 `animation-fill-mode: forwards` 讓元素保持在動畫結束時的狀態，`backwards` 讓元素在延遲期間就套用第一個影格的樣式。
+</Callout>
+
+## 效能考量
+
+### 高效能屬性
+
+只有以下屬性可以透過 GPU 加速，不會觸發 layout 或 paint：
+
+| 屬性 | 效能 |
+|------|------|
+| `transform` | 極佳（GPU 合成） |
+| `opacity` | 極佳（GPU 合成） |
+| `filter` | 良好 |
+| `width` / `height` | 差（觸發 reflow） |
+| `top` / `left` | 差（觸發 reflow） |
+| `margin` / `padding` | 差（觸發 reflow） |
+
+```css
+/* 不好：動畫 left 會觸發 reflow */
+.bad {
+  position: absolute;
+  left: 0;
+  transition: left 0.3s;
+}
+.bad:hover { left: 100px; }
+
+/* 好：使用 transform 替代 */
+.good {
+  transform: translateX(0);
+  transition: transform 0.3s;
+}
+.good:hover { transform: translateX(100px); }
+```
+
+### will-change
+
+提前告知瀏覽器某個屬性即將改變，讓瀏覽器預先優化：
+
+```css
+.element {
+  will-change: transform, opacity;
+}
+```
+
+<Callout type="warning" title="謹慎使用 will-change">
+`will-change` 會佔用額外的記憶體和 GPU 資源。不要在大量元素上使用，也不要設定 `will-change: all`。最佳做法是在動畫開始前添加，結束後移除。
+</Callout>
+
+### 尊重使用者偏好
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="CSS 動畫效果展示"
+  defaultHTML={`<div class="demo-section">
+  <h3>Transition 效果</h3>
+  <div class="button-row">
+    <button class="btn btn-scale">Hover 放大</button>
+    <button class="btn btn-slide">Hover 滑動底線</button>
+    <button class="btn btn-glow">Hover 發光</button>
+  </div>
+
+  <h3>Animation 動畫</h3>
+  <div class="anim-row">
+    <div class="anim-box bounce-anim">彈跳</div>
+    <div class="anim-box spin-anim">旋轉</div>
+    <div class="anim-box pulse-anim">脈衝</div>
+    <div class="anim-box shake-anim">搖晃</div>
+  </div>
+
+  <h3>Loading 動畫</h3>
+  <div class="loader-row">
+    <div class="spinner"></div>
+    <div class="dots">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 8px; }
+h3 { margin: 12px 0 8px; font-size: 15px; }
+
+/* Transition 按鈕 */
+.button-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-scale {
+  background: #2196F3;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.btn-scale:hover { transform: scale(1.1); }
+
+.btn-slide {
+  background: #4CAF50;
+}
+.btn-slide::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: #FFF;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+.btn-slide:hover::after { transform: translateX(0); }
+
+.btn-glow {
+  background: #9C27B0;
+  transition: box-shadow 0.3s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 20px rgba(156, 39, 176, 0.6);
+}
+
+/* Animation */
+.anim-row { display: flex; gap: 16px; flex-wrap: wrap; }
+
+.anim-box {
+  width: 70px;
+  height: 70px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+}
+
+.bounce-anim {
+  background: #F44336;
+  animation: bounce 1s ease infinite;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+.spin-anim {
+  background: #FF9800;
+  animation: spin 2s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.pulse-anim {
+  background: #2196F3;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+.shake-anim {
+  background: #4CAF50;
+  animation: shake 0.5s ease-in-out infinite;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* Loading */
+.loader-row { display: flex; gap: 32px; align-items: center; }
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 4px solid #E0E0E0;
+  border-top-color: #2196F3;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.dots { display: flex; gap: 6px; }
+.dots span {
+  width: 10px;
+  height: 10px;
+  background: #9C27B0;
+  border-radius: 50%;
+  animation: dotBounce 1.4s ease-in-out infinite;
+}
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}`}
+  defaultJS={``}
+/>
+
+## 常用動畫技巧
+
+### 交錯動畫（Stagger）
+
+```css
+.item {
+  animation: fadeIn 0.5s ease forwards;
+  opacity: 0;
+}
+.item:nth-child(1) { animation-delay: 0.1s; }
+.item:nth-child(2) { animation-delay: 0.2s; }
+.item:nth-child(3) { animation-delay: 0.3s; }
+```
+
+### 暫停 / 播放
+
+```css
+.animated { animation: spin 2s linear infinite; }
+.animated:hover { animation-play-state: paused; }
+```

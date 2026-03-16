@@ -1,0 +1,313 @@
+# 正則表達式
+
+正則表達式（Regular Expression，簡稱 Regex）是一種強大的字串匹配與搜尋工具。雖然初學時可能覺得語法難以閱讀，但掌握後能大幅提升文字處理效率。
+
+## 建立正則表達式
+
+JavaScript 有兩種建立正則的方式：
+
+```js
+// 字面量語法（常用）
+const regex1 = /hello/gi;
+
+// 建構函式（適合動態建立）
+const pattern = 'hello';
+const regex2 = new RegExp(pattern, 'gi');
+```
+
+### 常用旗標（Flags）
+
+| 旗標 | 說明 |
+|------|------|
+| `g` | 全域搜尋（找出所有匹配） |
+| `i` | 不區分大小寫 |
+| `m` | 多行模式（`^` 和 `$` 匹配每行的開頭和結尾） |
+| `s` | 讓 `.` 也匹配換行符 |
+| `u` | Unicode 模式 |
+| `d` | 產生匹配的索引資訊 |
+
+## 基本語法
+
+### 字元類（Character Classes）
+
+```js
+/[abc]/      // 匹配 a、b 或 c 中的任一個
+/[a-z]/      // 匹配任何小寫字母
+/[A-Z]/      // 匹配任何大寫字母
+/[0-9]/      // 匹配任何數字
+/[a-zA-Z0-9]/ // 匹配字母與數字
+/[^abc]/     // 匹配除了 a、b、c 以外的任何字元
+```
+
+### 量詞（Quantifiers）
+
+```js
+/a*/         // 匹配 0 個或多個 a
+/a+/         // 匹配 1 個或多個 a
+/a?/         // 匹配 0 個或 1 個 a
+/a{3}/       // 匹配恰好 3 個 a
+/a{2,5}/     // 匹配 2 到 5 個 a
+/a{2,}/      // 匹配 2 個以上的 a
+```
+
+### 錨點（Anchors）
+
+```js
+/^hello/     // 以 hello 開頭
+/world$/     // 以 world 結尾
+/\bhello\b/  // 完整單字 hello（word boundary）
+```
+
+## 特殊字元
+
+```js
+/\d/         // 數字 [0-9]
+/\D/         // 非數字 [^0-9]
+/\w/         // 字母、數字、底線 [a-zA-Z0-9_]
+/\W/         // 非字母數字 [^a-zA-Z0-9_]
+/\s/         // 空白字元（空格、tab、換行等）
+/\S/         // 非空白字元
+/./          // 任何字元（除了換行符）
+/\./         // 匹配字面的 . 號（需跳脫）
+```
+
+<Callout type="tip" title="跳脫特殊字元">
+以下字元在正則中有特殊意義，使用時需加上反斜線跳脫：`. * + ? ^ $ { } [ ] ( ) | \`。例如匹配 `$100` 要寫成 `/\$100/`。
+</Callout>
+
+## 分組與捕獲
+
+### 捕獲群組
+
+```js
+// 使用括號建立捕獲群組
+const dateRegex = /(\d{4})-(\d{2})-(\d{2})/;
+const match = '2024-01-15'.match(dateRegex);
+
+console.log(match[0]); // '2024-01-15'（完整匹配）
+console.log(match[1]); // '2024'（第一個群組）
+console.log(match[2]); // '01'（第二個群組）
+console.log(match[3]); // '15'（第三個群組）
+```
+
+### 命名捕獲群組
+
+```js
+const regex = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+const result = '2024-01-15'.match(regex);
+
+console.log(result.groups.year);  // '2024'
+console.log(result.groups.month); // '01'
+console.log(result.groups.day);   // '15'
+```
+
+### 非捕獲群組
+
+```js
+// (?:...) 只分組不捕獲
+const regex = /(?:https?|ftp):\/\/.+/;
+```
+
+### 反向引用
+
+```js
+// \1 引用第一個捕獲群組的匹配內容
+const regex = /(['"])(.*?)\1/;
+console.log(regex.test('"hello"'));   // true
+console.log(regex.test("'world'"));   // true
+console.log(regex.test('"mixed\''));   // false
+```
+
+## 前瞻與後瞻
+
+前瞻與後瞻（Lookahead/Lookbehind）用於匹配「前面或後面符合條件」的位置，但不消耗字元：
+
+```js
+// 正向前瞻 (?=...)  — 後面跟著...
+/\d+(?=px)/.exec('12px 3em');  // ['12']
+
+// 負向前瞻 (?!...)  — 後面不跟著...
+/\d+(?!px)/.exec('12px 3em');  // ['3']
+
+// 正向後瞻 (?<=...) — 前面有...
+/(?<=\$)\d+/.exec('$100');     // ['100']
+
+// 負向後瞻 (?<!...) — 前面沒有...
+/(?<!\$)\d+/.exec('€50 $100'); // ['50']
+```
+
+## 常用正則模式
+
+```js
+// 電子郵件（簡易版）
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+// 台灣手機號碼
+const phoneRegex = /^09\d{8}$/;
+
+// URL
+const urlRegex = /^https?:\/\/[\w.-]+(?:\.[\w.-]+)+[\w\-._~:/?#[\]@!$&'()*+,;=]*$/;
+
+// 密碼強度（至少8位，包含大小寫和數字）
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+
+// IPv4 位址
+const ipRegex = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+
+// HTML 標籤
+const htmlTagRegex = /<\/?[\w\s="'-]+\/?>/g;
+```
+
+<Callout type="warning" title="正則的局限性">
+正則表達式適合處理簡單的格式驗證，但不適合解析複雜的巢狀結構（如 HTML）。對於 email 驗證，生產環境建議使用專門的驗證庫或發送驗證信確認。
+</Callout>
+
+## String 方法與正則
+
+### match() 與 matchAll()
+
+```js
+const text = '訂單 A-123 和 B-456 已出貨';
+
+// match 回傳第一個匹配（無 g 旗標時）
+text.match(/[A-Z]-\d+/);  // ['A-123']
+
+// match 回傳所有匹配（有 g 旗標時）
+text.match(/[A-Z]-\d+/g); // ['A-123', 'B-456']
+
+// matchAll 回傳迭代器，包含群組資訊
+for (const m of text.matchAll(/([A-Z])-(\d+)/g)) {
+  console.log(`代碼: ${m[1]}, 編號: ${m[2]}`);
+}
+```
+
+### replace() 與 replaceAll()
+
+```js
+// 基本替換
+'hello world'.replace(/world/, 'JavaScript'); // 'hello JavaScript'
+
+// 使用捕獲群組
+'2024-01-15'.replace(/(\d{4})-(\d{2})-(\d{2})/, '$2/$3/$1');
+// '01/15/2024'
+
+// 使用函式
+'hello WORLD'.replace(/\b\w+\b/g, (word) => {
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}); // 'Hello World'
+```
+
+### search() 與 split()
+
+```js
+// search 回傳第一個匹配的索引
+'hello 123 world'.search(/\d+/); // 6
+
+// split 用正則分割字串
+'apple, banana;  cherry'.split(/[,;]\s*/);
+// ['apple', 'banana', 'cherry']
+```
+
+## 互動範例
+
+<CodePlayground
+  title="正則表達式測試器"
+  defaultHTML={`<div id="app">
+  <h3>正則表達式測試器</h3>
+  <div style="margin-bottom:8px;">
+    <label>正則：</label>
+    <input id="regexInput" value="(\\d{4})-(\\d{2})-(\\d{2})" style="width:300px;padding:6px;">
+    <label style="margin-left:8px;">旗標：</label>
+    <input id="flagsInput" value="g" style="width:50px;padding:6px;">
+  </div>
+  <div style="margin-bottom:8px;">
+    <label>測試文字：</label><br>
+    <textarea id="testInput" rows="3" style="width:100%;padding:6px;box-sizing:border-box;">今天是 2024-01-15，明天是 2024-01-16</textarea>
+  </div>
+  <button id="testBtn">測試</button>
+  <button id="emailBtn">Email 驗證</button>
+  <button id="phoneBtn">手機驗證</button>
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:60px;margin-top:8px;"></pre>
+</div>`}
+  defaultCSS={`#app { font-family: sans-serif; }
+label { font-weight: bold; font-size: 14px; }
+input, textarea { border: 1px solid #ccc; border-radius: 4px; }
+button {
+  padding: 8px 14px;
+  margin: 4px 4px 4px 0;
+  border: none;
+  background: #10b981;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #059669; }`}
+  defaultJS={`const output = document.getElementById('output');
+function log(msg) { output.textContent += msg + '\\n'; }
+
+document.getElementById('testBtn').addEventListener('click', () => {
+  output.textContent = '';
+  const pattern = document.getElementById('regexInput').value;
+  const flags = document.getElementById('flagsInput').value;
+  const text = document.getElementById('testInput').value;
+
+  try {
+    const regex = new RegExp(pattern, flags);
+    log('正則: /' + pattern + '/' + flags);
+    log('');
+
+    if (flags.includes('g')) {
+      const matches = [...text.matchAll(regex)];
+      log('找到 ' + matches.length + ' 個匹配:');
+      matches.forEach((m, i) => {
+        log('  匹配 ' + (i+1) + ': "' + m[0] + '" (位置 ' + m.index + ')');
+        for (let g = 1; g < m.length; g++) {
+          log('    群組 ' + g + ': "' + m[g] + '"');
+        }
+      });
+    } else {
+      const match = text.match(regex);
+      if (match) {
+        log('匹配: "' + match[0] + '" (位置 ' + match.index + ')');
+        for (let g = 1; g < match.length; g++) {
+          log('群組 ' + g + ': "' + match[g] + '"');
+        }
+      } else {
+        log('沒有匹配');
+      }
+    }
+  } catch (e) {
+    log('正則錯誤: ' + e.message);
+  }
+});
+
+// Email 驗證
+document.getElementById('emailBtn').addEventListener('click', () => {
+  output.textContent = '';
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$/;
+  const tests = ['user@example.com', 'invalid@', 'test@test.co.uk', '@no-user.com'];
+  log('=== Email 驗證 ===');
+  tests.forEach(email => {
+    log(email + ' → ' + (emailRegex.test(email) ? '有效' : '無效'));
+  });
+});
+
+// 手機驗證
+document.getElementById('phoneBtn').addEventListener('click', () => {
+  output.textContent = '';
+  const phoneRegex = /^09\\d{8}$/;
+  const tests = ['0912345678', '0912-345-678', '02-12345678', '091234567'];
+  log('=== 台灣手機驗證 ===');
+  tests.forEach(phone => {
+    log(phone + ' → ' + (phoneRegex.test(phone) ? '有效' : '無效'));
+  });
+});`}
+/>
+
+## 效能注意事項
+
+1. **避免災難性回溯**：如 `/(a+)+b/` 對不匹配的字串會產生指數級回溯
+2. **盡量具體**：`\d{4}` 比 `\d+` 更有效率
+3. **善用非貪婪量詞**：`.*?` 比 `.*` 能更快找到匹配
+4. **快取正則物件**：在迴圈外建立正則，避免重複編譯
+5. **使用 `test()` 做布林檢查**：比 `match()` 更快，因為不需要建立匹配陣列

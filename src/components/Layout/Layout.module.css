@@ -1,0 +1,20 @@
+.layout {
+  min-height: 100vh;
+}
+
+.main {
+  margin-top: var(--header-height);
+  margin-left: var(--sidebar-width);
+  min-height: calc(100vh - var(--header-height));
+  transition: margin-left 0.3s ease;
+}
+
+.mainFull {
+  margin-left: 0;
+}
+
+@media (max-width: 767px) {
+  .main {
+    margin-left: 0;
+  }
+}

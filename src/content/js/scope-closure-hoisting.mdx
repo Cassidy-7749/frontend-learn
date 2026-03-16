@@ -1,0 +1,276 @@
+# 作用域、閉包與提升
+
+理解作用域（Scope）、閉包（Closure）與提升（Hoisting）是掌握 JavaScript 執行機制的關鍵。這三個概念環環相扣，決定了變數在何處可以被存取。
+
+## 全域作用域（Global Scope）
+
+在所有函式與區塊之外宣告的變數，屬於全域作用域：
+
+```js
+var globalVar = '我是全域變數';
+let globalLet = '我也是全域變數';
+
+function showGlobal() {
+  console.log(globalVar); // 可以存取
+  console.log(globalLet); // 可以存取
+}
+```
+
+<Callout type="warning" title="避免污染全域作用域">
+過多的全域變數容易造成命名衝突。在模組化開發中，盡量避免在全域作用域宣告變數，改用模組匯出或 IIFE（立即呼叫函式表達式）封裝。
+</Callout>
+
+## 函式作用域（Function Scope）
+
+使用 `var` 宣告的變數，其作用域限於所在函式：
+
+```js
+function example() {
+  var x = 10;
+  if (true) {
+    var y = 20; // var 沒有區塊作用域，y 屬於 example 函式作用域
+    console.log(x); // 10
+  }
+  console.log(y); // 20 ← 在 if 區塊外仍可存取
+}
+// console.log(x); // ReferenceError
+```
+
+## 區塊作用域（Block Scope）
+
+`let` 和 `const` 具有區塊作用域，被 `{}` 限制：
+
+```js
+function example() {
+  let a = 1;
+  const b = 2;
+  if (true) {
+    let c = 3;
+    const d = 4;
+    console.log(a, b); // 1, 2 — 可存取外層
+  }
+  // console.log(c); // ReferenceError — c 只在 if 區塊內有效
+  // console.log(d); // ReferenceError
+}
+```
+
+## 詞法作用域（Lexical Scope）
+
+JavaScript 採用詞法作用域，即函式的作用域在「定義時」就已決定，而非「呼叫時」：
+
+```js
+const outerValue = '外層';
+
+function outer() {
+  const innerValue = '內層';
+
+  function inner() {
+    console.log(outerValue); // '外層' — 查找定義時的外層作用域
+    console.log(innerValue); // '內層'
+  }
+
+  return inner;
+}
+
+const fn = outer();
+fn(); // 即使在外部呼叫，仍能存取 outer 的變數
+```
+
+## 閉包（Closure）
+
+當一個函式記住了它被定義時的詞法作用域，即使在該作用域之外執行，這就形成了閉包。
+
+### 基本閉包
+
+```js
+function createCounter() {
+  let count = 0; // 被閉包「記住」
+
+  return {
+    increment() { return ++count; },
+    decrement() { return --count; },
+    getCount()  { return count; }
+  };
+}
+
+const counter = createCounter();
+counter.increment(); // 1
+counter.increment(); // 2
+counter.getCount();  // 2
+// count 變數從外部無法直接存取，實現了封裝
+```
+
+### 閉包的實際應用
+
+```js
+// 1. 函式工廠
+function multiply(factor) {
+  return (number) => number * factor;
+}
+const double = multiply(2);
+const triple = multiply(3);
+double(5); // 10
+triple(5); // 15
+
+// 2. 私有變數
+function createUser(name) {
+  let _password = ''; // 私有
+
+  return {
+    getName: () => name,
+    setPassword: (pwd) => { _password = pwd; },
+    checkPassword: (pwd) => pwd === _password
+  };
+}
+
+// 3. 記憶化（Memoization）
+function memoize(fn) {
+  const cache = {};
+  return function(...args) {
+    const key = JSON.stringify(args);
+    if (key in cache) return cache[key];
+    return (cache[key] = fn.apply(this, args));
+  };
+}
+```
+
+<Callout type="tip" title="閉包的記憶重點">
+閉包 = 函式 + 它所捕獲的外部變數。只要函式還在，被引用的變數就不會被垃圾回收。這也是閉包可能造成記憶體洩漏的原因之一。
+</Callout>
+
+## 提升（Hoisting）
+
+JavaScript 引擎在執行前會先掃描程式碼，將宣告「提升」到作用域頂部。
+
+### var 的提升
+
+```js
+console.log(x); // undefined（宣告被提升，但賦值不會）
+var x = 5;
+console.log(x); // 5
+
+// 等同於：
+// var x;
+// console.log(x);
+// x = 5;
+```
+
+### 函式宣告的提升
+
+```js
+greet(); // "Hello!" — 函式宣告整體被提升
+
+function greet() {
+  console.log('Hello!');
+}
+```
+
+### let/const 與暫時死區（TDZ）
+
+`let` 和 `const` 也會提升，但在宣告語句之前處於「暫時死區」，無法存取：
+
+```js
+// console.log(a); // ReferenceError: Cannot access 'a' before initialization
+let a = 10;
+
+// console.log(b); // ReferenceError
+const b = 20;
+```
+
+```js
+// TDZ 範例
+let x = '外層';
+
+function example() {
+  // 此處開始 x 的 TDZ
+  // console.log(x); // ReferenceError — 不會去找外層的 x
+  let x = '內層'; // TDZ 結束
+  console.log(x); // '內層'
+}
+```
+
+## 經典陷阱：迴圈中的閉包
+
+```js
+// 問題：使用 var
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 100);
+}
+// 輸出：3, 3, 3（因為 var 沒有區塊作用域）
+
+// 解法一：使用 let
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 100);
+}
+// 輸出：0, 1, 2
+
+// 解法二：使用 IIFE
+for (var i = 0; i < 3; i++) {
+  ((j) => {
+    setTimeout(() => console.log(j), 100);
+  })(i);
+}
+// 輸出：0, 1, 2
+```
+
+## 互動範例
+
+<CodePlayground
+  title="閉包與提升實驗"
+  defaultJS={`// === 閉包：計數器 ===
+function createCounter(initial) {
+  let count = initial || 0;
+  return {
+    increment: () => ++count,
+    decrement: () => --count,
+    getCount: () => count
+  };
+}
+
+const counter = createCounter(10);
+console.log('初始值:', counter.getCount());
+console.log('遞增:', counter.increment());
+console.log('遞增:', counter.increment());
+console.log('遞減:', counter.decrement());
+console.log('目前值:', counter.getCount());
+console.log('---');
+
+// === 閉包：函式工廠 ===
+function greetIn(language) {
+  const greetings = {
+    zh: '你好',
+    en: 'Hello',
+    ja: 'こんにちは'
+  };
+  return (name) => greetings[language] + ', ' + name + '!';
+}
+
+const greetZh = greetIn('zh');
+const greetEn = greetIn('en');
+console.log(greetZh('小明'));
+console.log(greetEn('Alice'));
+console.log('---');
+
+// === 提升行為 ===
+console.log('var x 提升:', typeof hoistedVar);
+var hoistedVar = 42;
+console.log('var x 賦值後:', hoistedVar);
+
+// 函式宣告整體提升
+console.log('函式提升:', hoistedFn());
+function hoistedFn() { return '我被提升了！'; }
+console.log('---');
+
+// === 迴圈閉包 ===
+console.log('var 迴圈（全部是 3）:');
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log('  var i =', i), 0);
+}
+
+console.log('let 迴圈（正確 0,1,2）:');
+for (let j = 0; j < 3; j++) {
+  setTimeout(() => console.log('  let j =', j), 10);
+}`}
+/>
+
+掌握作用域與閉包後，你會更容易理解 `this` 關鍵字的運作方式——這是下一章的主題。

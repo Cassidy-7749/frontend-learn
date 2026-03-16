@@ -1,0 +1,358 @@
+# SEO 基礎
+
+搜尋引擎最佳化（Search Engine Optimization，SEO）是提升網站在搜尋結果中排名的技術與策略。作為前端開發者，了解 SEO 的基本原理，能讓你建構出對搜尋引擎更友善的網站。
+
+## 搜尋引擎如何運作
+
+搜尋引擎的運作可以分為三個主要步驟：
+
+### 1. 爬取（Crawling）
+
+搜尋引擎使用稱為「爬蟲」或「蜘蛛」的程式來發現和下載網頁。爬蟲會從已知的頁面出發，沿著連結發現新頁面。
+
+影響爬取的因素：
+- **robots.txt** — 告訴爬蟲哪些頁面可以或不可以爬取。
+- **Sitemap** — 提供網站的完整頁面清單，幫助爬蟲發現所有頁面。
+- **內部連結結構** — 良好的內部連結讓爬蟲更容易找到所有頁面。
+
+### 2. 索引（Indexing）
+
+爬蟲下載頁面後，搜尋引擎會分析頁面內容，包括文字、圖片、影片等，並建立索引。索引就像一本巨大的目錄，記錄了每個頁面的內容和關聯。
+
+### 3. 排名（Ranking）
+
+當使用者搜尋時，搜尋引擎會從索引中找出相關頁面，並根據數百個因素來決定排名順序。
+
+<Callout type="info" title="資訊">
+Google 的排名因素超過 200 個，但最核心的包括：內容品質與相關性、反向連結（其他網站連結到你的網站）、使用者體驗（載入速度、行動裝置友善、Core Web Vitals）和技術 SEO。
+</Callout>
+
+## 語意化 HTML 與 SEO
+
+正確使用語意化 HTML 是 SEO 的基礎。搜尋引擎會根據 HTML 結構來理解頁面內容的層次和重要性。
+
+### 標題層級（Heading Hierarchy）
+
+```html
+<!-- 正確的標題層級 -->
+<h1>前端開發指南</h1>
+  <h2>HTML 基礎</h2>
+    <h3>語意化標籤</h3>
+    <h3>表單元素</h3>
+  <h2>CSS 進階</h2>
+    <h3>Flexbox</h3>
+    <h3>Grid</h3>
+```
+
+- 每個頁面只應有一個 `<h1>`。
+- 標題層級不要跳級（例如 `<h1>` 直接跳到 `<h3>`）。
+- 標題應該描述其下方的內容。
+
+### 語意化標籤的 SEO 價值
+
+| 標籤 | SEO 影響 |
+|------|---------|
+| `<title>` | 顯示在搜尋結果中的標題，最重要的排名因素之一 |
+| `<meta name="description">` | 顯示在搜尋結果中的摘要 |
+| `<h1>` ~ `<h6>` | 幫助搜尋引擎理解內容結構 |
+| `<article>` | 標記獨立的內容區塊 |
+| `<nav>` | 標記導覽區域，幫助理解網站結構 |
+| `<main>` | 標記主要內容區域 |
+| `<img alt="...">` | 圖片搜尋的關鍵 |
+| `<a href="...">` | 連結文字影響目標頁面的排名 |
+
+### 連結的最佳實踐
+
+```html
+<!-- 好的連結文字 -->
+<a href="/html-guide">了解更多 HTML 語意化標籤的使用方式</a>
+
+<!-- 不好的連結文字 -->
+<a href="/html-guide">點這裡</a>
+
+<!-- 外部連結加上 rel 屬性 -->
+<a href="https://example.com" rel="noopener noreferrer"
+   target="_blank">外部連結</a>
+
+<!-- 不想傳遞 SEO 權重的連結 -->
+<a href="https://example.com" rel="nofollow">廣告連結</a>
+```
+
+<Callout type="warning" title="注意">
+避免使用 JavaScript 來渲染關鍵內容。雖然 Google 可以執行 JavaScript，但解析 JS 渲染的內容需要更多時間和資源。如果可能，使用 SSR（Server-Side Rendering）或 SSG（Static Site Generation）來確保搜尋引擎能快速取得內容。
+</Callout>
+
+## 結構化資料（Structured Data）
+
+結構化資料使用 Schema.org 詞彙，幫助搜尋引擎更精確地理解頁面內容，並可能觸發搜尋結果中的「豐富摘要（Rich Snippets）」。
+
+### JSON-LD 格式（推薦）
+
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "HTML5 語意化標籤完整指南",
+  "author": {
+    "@type": "Person",
+    "name": "Alice Chen"
+  },
+  "datePublished": "2025-01-15",
+  "dateModified": "2025-03-01",
+  "description": "深入了解 HTML5 語意化標籤的使用方式",
+  "image": "https://example.com/article-cover.jpg"
+}
+</script>
+```
+
+### 常見的結構化資料類型
+
+- **Article** — 文章（新聞、部落格文章）
+- **Product** — 產品（名稱、價格、評價）
+- **FAQ** — 常見問題
+- **BreadcrumbList** — 麵包屑導覽
+- **Organization** — 組織資訊
+- **Event** — 活動資訊
+- **Recipe** — 食譜
+- **HowTo** — 教學步驟
+
+### FAQ 結構化資料範例
+
+```html
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "什麼是 SEO？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "SEO 是搜尋引擎最佳化的縮寫，指提升網站在搜尋結果中排名的技術與策略。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "為什麼 SEO 重要？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "SEO 能讓更多使用者透過搜尋引擎找到你的網站，帶來自然流量。"
+      }
+    }
+  ]
+}
+</script>
+```
+
+## SEO 友善的 HTML 範例
+
+<CodePlayground
+  title="SEO 友善的頁面結構"
+  defaultHTML={`<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+  <title>前端開發指南 - HTML 語意化 | My Blog</title>
+  <meta name="description"
+        content="深入了解 HTML5 語意化標籤的使用方式，包括 header、nav、main、article 等標籤的正確用法。">
+</head>
+<body>
+
+<header>
+  <nav aria-label="主導覽">
+    <a href="/">首頁</a>
+    <a href="/blog">部落格</a>
+    <a href="/about">關於</a>
+  </nav>
+</header>
+
+<!-- 麵包屑導覽 -->
+<nav aria-label="麵包屑">
+  <ol class="breadcrumb">
+    <li><a href="/">首頁</a></li>
+    <li><a href="/blog">部落格</a></li>
+    <li aria-current="page">HTML 語意化</li>
+  </ol>
+</nav>
+
+<main>
+  <article>
+    <header>
+      <h1>HTML5 語意化標籤完整指南</h1>
+      <div class="meta">
+        <time datetime="2025-01-15">2025 年 1 月 15 日</time>
+        <span>作者：Alice Chen</span>
+      </div>
+    </header>
+
+    <figure>
+      <img src="https://via.placeholder.com/600x300"
+           alt="HTML5 語意化標籤的層級結構圖"
+           loading="lazy"
+           width="600" height="300">
+      <figcaption>HTML5 頁面結構示意圖</figcaption>
+    </figure>
+
+    <section>
+      <h2>為什麼要使用語意化標籤？</h2>
+      <p>語意化標籤讓搜尋引擎能更準確地理解你的頁面結構。
+         使用適當的標籤（如 article、section、nav）比起
+         全部使用 div 來得更有 SEO 價值。</p>
+    </section>
+
+    <section>
+      <h2>常用的語意化標籤</h2>
+      <p>HTML5 引入了多個新的語意化標籤...</p>
+    </section>
+  </article>
+
+  <aside>
+    <h2>相關文章</h2>
+    <ul>
+      <li><a href="/css-guide">CSS 完整指南</a></li>
+      <li><a href="/js-guide">JavaScript 入門教學</a></li>
+    </ul>
+  </aside>
+</main>
+
+<footer>
+  <p>&copy; 2025 My Blog. All rights reserved.</p>
+  <nav aria-label="頁尾導覽">
+    <a href="/privacy">隱私政策</a>
+    <a href="/terms">服務條款</a>
+  </nav>
+</footer>
+
+</body>
+</html>`}
+  defaultCSS={`* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: sans-serif; color: #333; line-height: 1.6; }
+
+header nav[aria-label="主導覽"] {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1rem;
+  background: #1565c0;
+}
+header nav a {
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+}
+header nav a:hover { text-decoration: underline; }
+
+.breadcrumb {
+  display: flex;
+  list-style: none;
+  padding: 0.75rem 1rem;
+  background: #f5f5f5;
+  font-size: 0.9rem;
+}
+.breadcrumb li + li::before {
+  content: " / ";
+  margin: 0 0.5rem;
+  color: #999;
+}
+.breadcrumb a { color: #1565c0; text-decoration: none; }
+
+main {
+  display: flex;
+  gap: 2rem;
+  padding: 1rem;
+  max-width: 900px;
+}
+article { flex: 2; }
+aside {
+  flex: 1;
+  background: #fafafa;
+  padding: 1rem;
+  border-radius: 8px;
+  align-self: flex-start;
+}
+
+h1 { font-size: 1.5rem; color: #1565c0; margin-bottom: 0.5rem; }
+h2 { font-size: 1.15rem; margin: 1rem 0 0.5rem; color: #333; }
+
+.meta {
+  font-size: 0.85rem;
+  color: #777;
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+figure {
+  margin: 1rem 0;
+}
+figure img {
+  width: 100%;
+  border-radius: 8px;
+}
+figcaption {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #999;
+  margin-top: 0.5rem;
+}
+aside ul {
+  list-style: none;
+  padding: 0;
+}
+aside li { margin-bottom: 0.5rem; }
+aside a { color: #1565c0; text-decoration: none; }
+
+footer {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: #f5f5f5;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #777;
+}
+footer nav { margin-top: 0.5rem; }
+footer a { color: #1565c0; margin: 0 0.5rem; text-decoration: none; }`}
+  defaultJS={``}
+/>
+
+<Callout type="tip" title="提示">
+使用 Google 的 Rich Results Test（https://search.google.com/test/rich-results）來測試你的結構化資料是否正確。使用 Lighthouse 的 SEO 審計功能來檢查頁面的 SEO 基本項目。
+</Callout>
+
+## 技術 SEO 檢查清單
+
+以下是前端開發者應注意的技術 SEO 項目：
+
+### 基本項目
+- 每個頁面都有唯一且描述性的 `<title>`（建議 50-60 字元）。
+- 每個頁面都有 `<meta name="description">`（建議 120-160 字元）。
+- 使用正確的標題層級（h1 -> h2 -> h3）。
+- 所有圖片都有 `alt` 屬性。
+- 使用 `<a>` 標籤建立有意義的內部連結。
+
+### 效能相關
+- 使用 `loading="lazy"` 延遲載入非首屏圖片。
+- 為圖片指定 `width` 和 `height`（避免版面位移 CLS）。
+- 壓縮圖片，使用現代格式（WebP、AVIF）。
+- 最小化 CSS 和 JavaScript。
+
+### 行動裝置
+- 有 `<meta name="viewport">` 標籤。
+- 使用響應式設計。
+- 按鈕和連結的觸控區域足夠大（至少 48x48 px）。
+
+### 進階項目
+- 設定 canonical URL（`<link rel="canonical">`）避免重複內容。
+- 使用 hreflang 標籤處理多語系頁面。
+- 提供 sitemap.xml。
+- 設定適當的 robots.txt。
+
+## 總結
+
+- SEO 不只是行銷的事，前端開發者在技術 SEO 中扮演關鍵角色。
+- 語意化 HTML 是 SEO 的基礎，正確使用標籤比任何 SEO 技巧都重要。
+- 結構化資料可以讓搜尋結果更豐富，吸引更多點擊。
+- 效能和使用者體驗（Core Web Vitals）越來越成為排名的重要因素。
+- 前端 SEO 的核心：好的內容 + 正確的 HTML 結構 + 良好的效能。

@@ -1,0 +1,289 @@
+# Grid 網格佈局
+
+CSS Grid 是一個二維佈局系統，可以同時控制行（row）和列（column）。與 Flexbox 的一維佈局互補，Grid 特別適合用於整體頁面結構和複雜的區域劃分。
+
+## 基本概念
+
+```css
+.container {
+  display: grid;
+}
+```
+
+設定 `display: grid` 後，直接子元素成為 Grid Items。Grid 引入了幾個重要概念：
+
+- **Grid Line**：劃分行列的線
+- **Grid Track**：兩條線之間的空間（即一行或一列）
+- **Grid Cell**：行與列交叉形成的單格
+- **Grid Area**：一個或多個 Grid Cell 組成的矩形區域
+
+## grid-template-columns 與 grid-template-rows
+
+定義網格的列數和行數及其大小：
+
+```css
+.container {
+  /* 三列，固定寬度 */
+  grid-template-columns: 200px 300px 200px;
+
+  /* 兩行 */
+  grid-template-rows: 100px auto;
+}
+```
+
+### fr 單位
+
+`fr`（fraction）表示可用空間的份數：
+
+```css
+.container {
+  /* 三列等分 */
+  grid-template-columns: 1fr 1fr 1fr;
+
+  /* 側邊欄 + 主內容 */
+  grid-template-columns: 250px 1fr;
+
+  /* 比例分配：1:2:1 */
+  grid-template-columns: 1fr 2fr 1fr;
+}
+```
+
+### repeat()
+
+簡化重複的定義：
+
+```css
+.container {
+  grid-template-columns: repeat(3, 1fr);        /* 三等分 */
+  grid-template-columns: repeat(4, 100px);       /* 四個 100px */
+  grid-template-columns: repeat(3, 1fr 2fr);     /* 1fr 2fr 重複三次 */
+}
+```
+
+### minmax()
+
+設定軌道的最小和最大值：
+
+```css
+.container {
+  grid-template-columns: minmax(200px, 1fr) 2fr;
+  grid-template-rows: minmax(100px, auto);
+}
+```
+
+<Callout type="tip" title="auto-fill vs auto-fit">
+`repeat(auto-fill, minmax(200px, 1fr))` 會盡可能填入多列，空位留空。`repeat(auto-fit, minmax(200px, 1fr))` 會讓現有項目擴展填滿剩餘空間。用 `auto-fit` 做響應式通常更直覺。
+</Callout>
+
+## gap（間距）
+
+```css
+.container {
+  gap: 20px;                /* 行列間距皆 20px */
+  gap: 10px 20px;           /* row-gap 10px, column-gap 20px */
+  row-gap: 10px;
+  column-gap: 20px;
+}
+```
+
+## 放置 Grid Items
+
+### 使用 grid-column 和 grid-row
+
+```css
+.item {
+  grid-column: 1 / 3;      /* 從第 1 條線到第 3 條線（跨 2 列） */
+  grid-row: 1 / 2;          /* 佔第一行 */
+}
+
+.item-span {
+  grid-column: span 2;      /* 跨越 2 列 */
+  grid-row: span 3;         /* 跨越 3 行 */
+}
+```
+
+### grid-template-areas
+
+用命名的方式定義網格區域，非常直覺：
+
+```css
+.container {
+  grid-template-areas:
+    "header  header  header"
+    "sidebar main    aside"
+    "footer  footer  footer";
+  grid-template-columns: 200px 1fr 150px;
+  grid-template-rows: auto 1fr auto;
+}
+
+.header  { grid-area: header; }
+.sidebar { grid-area: sidebar; }
+.main    { grid-area: main; }
+.aside   { grid-area: aside; }
+.footer  { grid-area: footer; }
+```
+
+使用 `.` 表示空白區域：
+
+```css
+grid-template-areas:
+  "header header ."
+  "main   main   sidebar"
+  "footer footer footer";
+```
+
+## 對齊
+
+### 容器層級
+
+```css
+.container {
+  /* 水平對齊所有 items */
+  justify-items: start | end | center | stretch;
+
+  /* 垂直對齊所有 items */
+  align-items: start | end | center | stretch;
+
+  /* 水平對齊整個 grid */
+  justify-content: start | end | center | space-between;
+
+  /* 垂直對齊整個 grid */
+  align-content: start | end | center | space-between;
+}
+```
+
+### Item 層級
+
+```css
+.item {
+  justify-self: center;  /* 個別水平對齊 */
+  align-self: end;       /* 個別垂直對齊 */
+}
+```
+
+<Callout type="warning" title="Grid 與 Flexbox 如何選擇">
+一般原則：如果你需要控制一個方向上的佈局，使用 Flexbox；如果需要同時控制行與列的二維佈局，使用 Grid。兩者可以巢狀搭配使用，例如 Grid 做頁面框架，Flexbox 做元件內部排列。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="CSS Grid 佈局展示"
+  defaultHTML={`<h3>聖杯佈局（grid-template-areas）</h3>
+<div class="page-layout">
+  <header class="header">Header</header>
+  <nav class="sidebar">Sidebar</nav>
+  <main class="main">Main Content</main>
+  <aside class="aside">Aside</aside>
+  <footer class="footer">Footer</footer>
+</div>
+
+<h3>自適應卡片網格（auto-fit）</h3>
+<div class="card-grid">
+  <div class="card">卡片 1</div>
+  <div class="card">卡片 2</div>
+  <div class="card">卡片 3</div>
+  <div class="card">卡片 4</div>
+  <div class="card">卡片 5</div>
+  <div class="card">卡片 6</div>
+</div>`}
+  defaultCSS={`/* 聖杯佈局 */
+.page-layout {
+  display: grid;
+  grid-template-areas:
+    "header  header  header"
+    "sidebar main   aside"
+    "footer  footer  footer";
+  grid-template-columns: 120px 1fr 100px;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+  min-height: 250px;
+  font-size: 14px;
+}
+
+.header  { grid-area: header;  background: #2196F3; }
+.sidebar { grid-area: sidebar; background: #FF9800; }
+.main    { grid-area: main;    background: #4CAF50; }
+.aside   { grid-area: aside;   background: #9C27B0; }
+.footer  { grid-area: footer;  background: #607D8B; }
+
+.page-layout > * {
+  padding: 12px;
+  color: white;
+  font-weight: bold;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 自適應卡片 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.card {
+  background: #E3F2FD;
+  border: 2px solid #2196F3;
+  padding: 20px;
+  text-align: center;
+  border-radius: 8px;
+  font-weight: bold;
+  transition: transform 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+h3 { margin: 12px 0 8px; }`}
+  defaultJS={``}
+/>
+
+## 進階技巧
+
+### Subgrid
+
+子網格讓巢狀的 Grid 能繼承父網格的軌道定義：
+
+```css
+.parent {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.child {
+  grid-column: span 3;
+  display: grid;
+  grid-template-columns: subgrid; /* 繼承父層的列定義 */
+}
+```
+
+### 隱式網格
+
+當 Items 超出定義的行列時，Grid 會自動建立額外的軌道：
+
+```css
+.container {
+  grid-auto-rows: minmax(100px, auto); /* 自動建立的行高度 */
+  grid-auto-flow: dense;              /* 填滿空隙 */
+}
+```
+
+### 命名網格線
+
+```css
+.container {
+  grid-template-columns:
+    [sidebar-start] 200px
+    [sidebar-end main-start] 1fr
+    [main-end];
+}
+
+.item {
+  grid-column: main-start / main-end;
+}
+```

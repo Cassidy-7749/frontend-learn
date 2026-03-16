@@ -1,0 +1,210 @@
+# 資料型別與型別轉換
+
+JavaScript 是一門動態型別語言，變數的型別在執行期間才被決定。深入理解資料型別與型別轉換機制，是寫出穩健程式碼的基礎。
+
+## 七種原始型別（Primitive Types）
+
+JavaScript 有七種原始型別，它們是不可變的（immutable），按值傳遞：
+
+```js
+// 1. string — 字串
+const name = '前端學習';
+
+// 2. number — 數字（包含整數與浮點數）
+const age = 25;
+const pi = 3.14;
+const infinity = Infinity;
+const notANumber = NaN; // 仍是 number 型別
+
+// 3. bigint — 大整數
+const bigNum = 9007199254740991n;
+
+// 4. boolean — 布林值
+const isActive = true;
+
+// 5. undefined — 未定義
+let x; // x 為 undefined
+
+// 6. null — 空值
+const empty = null;
+
+// 7. symbol — 唯一識別符
+const id = Symbol('id');
+```
+
+<Callout type="tip" title="null 與 undefined 的差異">
+`undefined` 表示變數已宣告但尚未賦值，`null` 則是刻意設定為「空」的值。在語義上，`undefined` 是「缺少值」，`null` 是「刻意的空值」。
+</Callout>
+
+## 物件型別（Object Types）
+
+除了原始型別以外，其餘都是物件型別，按參考（reference）傳遞：
+
+```js
+// Object — 物件
+const person = { name: 'Alice', age: 30 };
+
+// Array — 陣列（本質上是物件）
+const fruits = ['apple', 'banana', 'cherry'];
+
+// Function — 函式（也是物件）
+function greet() { return 'Hello'; }
+
+// Date — 日期
+const now = new Date();
+
+// RegExp — 正規表達式
+const pattern = /\d+/g;
+```
+
+## typeof 運算子
+
+`typeof` 用來檢查值的型別，但它有一些令人意外的行為：
+
+```js
+typeof 'hello'      // "string"
+typeof 42            // "number"
+typeof 42n           // "bigint"
+typeof true          // "boolean"
+typeof undefined     // "undefined"
+typeof Symbol('x')   // "symbol"
+typeof {}            // "object"
+typeof []            // "object"  ← 注意！陣列也是 object
+typeof function(){}  // "function"
+typeof null          // "object"  ← 經典的歷史 bug
+```
+
+<Callout type="warning" title="typeof null 的陷阱">
+`typeof null` 回傳 `"object"` 是 JavaScript 初始設計的一個 bug，但由於向後相容性已無法修正。要判斷是否為 `null`，請使用 `value === null`。
+</Callout>
+
+## 隱式型別轉換（Implicit Coercion）
+
+JavaScript 在運算時會自動進行型別轉換，這常常導致令人困惑的結果：
+
+### 寬鬆相等 `==`
+
+```js
+0 == ''        // true — 空字串轉為 0
+0 == false     // true — false 轉為 0
+'' == false    // true — 兩者都轉為 0
+null == undefined // true — 特殊規則
+1 == '1'       // true — 字串轉為數字
+```
+
+### 加號 `+` 運算子
+
+```js
+'5' + 3        // "53" — 數字轉為字串（字串串接）
+5 + '3'        // "53"
+5 - '3'        // 2   — 字串轉為數字
+5 * '3'        // 15
+true + 1       // 2   — true 轉為 1
+[] + {}        // "[object Object]"
+{} + []        // 0（在某些環境中）
+```
+
+### 雙驚嘆號 `!!`
+
+```js
+!!0          // false
+!!''         // false
+!!null       // false
+!!undefined  // false
+!!NaN        // false
+!!1          // true
+!!'hello'    // true
+!!{}         // true（空物件也是 truthy）
+!![]         // true（空陣列也是 truthy）
+```
+
+## 顯式型別轉換（Explicit Coercion）
+
+相較於隱式轉換，顯式轉換讓意圖更清晰：
+
+```js
+// 轉為數字
+Number('42')       // 42
+Number('hello')    // NaN
+Number(true)       // 1
+Number(null)       // 0
+Number(undefined)  // NaN
+parseInt('42px')   // 42
+parseFloat('3.14') // 3.14
+
+// 轉為字串
+String(42)         // "42"
+String(true)       // "true"
+String(null)       // "null"
+(42).toString()    // "42"
+
+// 轉為布林
+Boolean(0)         // false
+Boolean('')        // false
+Boolean(null)      // false
+Boolean(1)         // true
+Boolean('hello')   // true
+Boolean({})        // true
+```
+
+<Callout type="tip" title="最佳實踐">
+建議使用嚴格相等 `===` 來避免隱式轉換帶來的意外行為。當需要型別轉換時，使用 `Number()`、`String()`、`Boolean()` 等顯式方法讓程式碼更易讀。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="型別轉換實驗室"
+  defaultJS={`// === typeof 檢查 ===
+console.log('typeof "hello":', typeof "hello");
+console.log('typeof 42:', typeof 42);
+console.log('typeof true:', typeof true);
+console.log('typeof undefined:', typeof undefined);
+console.log('typeof null:', typeof null, '← 歷史 bug！');
+console.log('typeof []:', typeof [], '← 陣列也是 object');
+console.log('typeof function(){}:', typeof function(){});
+console.log('---');
+
+// === 隱式轉換 ===
+console.log("'5' + 3 =", '5' + 3, '（字串串接）');
+console.log("5 - '3' =", 5 - '3', '（轉為數字）');
+console.log("true + 1 =", true + 1);
+console.log("0 == '':", 0 == '');
+console.log("null == undefined:", null == undefined);
+console.log('---');
+
+// === 顯式轉換 ===
+console.log("Number('42'):", Number('42'));
+console.log("Number('hello'):", Number('hello'));
+console.log("Boolean(''):", Boolean(''));
+console.log("Boolean('0'):", Boolean('0'), '← 非空字串為 truthy');
+console.log("Boolean([]):", Boolean([]), '← 空陣列也是 truthy');
+console.log('---');
+
+// === Falsy 值清單 ===
+const falsyValues = [0, -0, 0n, '', null, undefined, NaN];
+console.log('所有 falsy 值：');
+falsyValues.forEach(v => {
+  console.log(\`  \${String(v).padEnd(12)} → Boolean: \${Boolean(v)}\`);
+});`}
+/>
+
+## 如何正確判斷型別？
+
+```js
+// 判斷陣列
+Array.isArray([1, 2, 3]); // true
+
+// 判斷 null
+value === null;
+
+// 判斷 NaN
+Number.isNaN(NaN); // true（比全域 isNaN 更可靠）
+
+// 精確型別判斷
+Object.prototype.toString.call([]);      // "[object Array]"
+Object.prototype.toString.call(null);    // "[object Null]"
+Object.prototype.toString.call(/regex/); // "[object RegExp]"
+```
+
+掌握型別系統是理解 JavaScript 行為的第一步。下一章我們將探討作用域與閉包，進一步了解 JavaScript 的執行機制。

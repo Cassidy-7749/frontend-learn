@@ -1,0 +1,271 @@
+# this 關鍵字
+
+`this` 是 JavaScript 中最容易讓人混淆的概念之一。與其他語言不同，JavaScript 的 `this` 不是在定義時決定，而是根據「呼叫方式」動態決定的。
+
+## 四種綁定規則
+
+`this` 的值由以下四種規則決定，優先級由低到高：
+
+1. **預設綁定** — 最低優先
+2. **隱式綁定** — 透過物件呼叫
+3. **顯式綁定** — call / apply / bind
+4. **new 綁定** — 最高優先
+
+## 預設綁定（Default Binding）
+
+當函式獨立呼叫時，`this` 指向全域物件（瀏覽器中是 `window`），嚴格模式下為 `undefined`：
+
+```js
+function showThis() {
+  console.log(this);
+}
+showThis(); // window（非嚴格模式）
+
+function strictShowThis() {
+  'use strict';
+  console.log(this);
+}
+strictShowThis(); // undefined
+```
+
+<Callout type="warning" title="嚴格模式的差異">
+在嚴格模式（`'use strict'`）下，預設綁定的 `this` 為 `undefined` 而非全域物件。ES Module 自動啟用嚴格模式，所以在模組中獨立呼叫函式時 `this` 是 `undefined`。
+</Callout>
+
+## 隱式綁定（Implicit Binding）
+
+當函式作為物件的方法呼叫時，`this` 指向該物件：
+
+```js
+const user = {
+  name: 'Alice',
+  greet() {
+    console.log(`Hi, I'm ${this.name}`);
+  }
+};
+
+user.greet(); // "Hi, I'm Alice" — this 指向 user
+```
+
+### 隱式綁定的丟失
+
+隱式綁定最常見的陷阱是「綁定丟失」：
+
+```js
+const user = {
+  name: 'Alice',
+  greet() {
+    console.log(`Hi, I'm ${this.name}`);
+  }
+};
+
+// 將方法賦值給變數 — 綁定丟失
+const greetFn = user.greet;
+greetFn(); // "Hi, I'm undefined" — this 回到預設綁定
+
+// 作為回呼函式 — 綁定丟失
+setTimeout(user.greet, 100); // "Hi, I'm undefined"
+```
+
+## 顯式綁定（Explicit Binding）
+
+使用 `call`、`apply`、`bind` 明確指定 `this`：
+
+### call 與 apply
+
+```js
+function introduce(greeting, punctuation) {
+  console.log(`${greeting}, I'm ${this.name}${punctuation}`);
+}
+
+const person = { name: 'Bob' };
+
+// call — 逐一傳入參數
+introduce.call(person, 'Hello', '!');
+// "Hello, I'm Bob!"
+
+// apply — 用陣列傳入參數
+introduce.apply(person, ['Hey', '~']);
+// "Hey, I'm Bob~"
+```
+
+### bind
+
+`bind` 回傳一個新函式，永久綁定 `this`：
+
+```js
+const person = { name: 'Charlie' };
+
+function greet() {
+  console.log(`Hello, ${this.name}`);
+}
+
+const boundGreet = greet.bind(person);
+boundGreet(); // "Hello, Charlie"
+
+// 即使再用 call 也無法改變 bind 過的 this
+boundGreet.call({ name: 'Dave' }); // "Hello, Charlie" — 仍是 Charlie
+```
+
+<Callout type="tip" title="call vs apply vs bind">
+**call** 立即呼叫，參數逐一傳入。**apply** 立即呼叫，參數以陣列傳入。**bind** 回傳新函式，不立即呼叫。記憶口訣：**A**pply = **A**rray。
+</Callout>
+
+## new 綁定
+
+使用 `new` 呼叫建構函式時，`this` 指向新建立的物件：
+
+```js
+function Person(name, age) {
+  // this = {} （new 自動建立）
+  this.name = name;
+  this.age = age;
+  // 自動 return this
+}
+
+const alice = new Person('Alice', 25);
+console.log(alice.name); // 'Alice'
+console.log(alice.age);  // 25
+```
+
+`new` 的執行過程：
+
+1. 建立一個空物件 `{}`
+2. 將物件的 `__proto__` 指向建構函式的 `prototype`
+3. 將 `this` 綁定到新物件
+4. 如果建構函式沒有回傳物件，則回傳 `this`
+
+## 箭頭函式的 this
+
+箭頭函式沒有自己的 `this`，它會繼承定義時所在作用域的 `this`（詞法 this）：
+
+```js
+const user = {
+  name: 'Alice',
+  // 一般方法 — this 正常
+  greet() {
+    console.log(this.name); // 'Alice'
+
+    // 箭頭函式繼承 greet 的 this
+    const inner = () => {
+      console.log(this.name); // 'Alice' ✓
+    };
+    inner();
+  },
+  // 箭頭函式作為方法 — this 指向外層（全域）
+  greetArrow: () => {
+    console.log(this.name); // undefined ✗
+  }
+};
+
+user.greet();
+user.greetArrow();
+```
+
+### 箭頭函式 vs 一般函式
+
+```js
+// 常見場景：事件處理器中的計時器
+const button = {
+  text: 'Click me',
+  init() {
+    // ✗ 一般函式 — this 丟失
+    setTimeout(function() {
+      console.log(this.text); // undefined
+    }, 100);
+
+    // ✓ 箭頭函式 — 繼承 init 的 this
+    setTimeout(() => {
+      console.log(this.text); // 'Click me'
+    }, 100);
+  }
+};
+```
+
+<Callout type="warning" title="箭頭函式不適用的場合">
+箭頭函式不能用作建構函式（不能 `new`），也不適合作為物件的方法（會丟失 `this`）。在 Vue 的 `methods` 或 `computed` 中也不應使用箭頭函式。
+</Callout>
+
+## 優先級總結
+
+```
+new 綁定 > 顯式綁定 (call/apply/bind) > 隱式綁定 (obj.method) > 預設綁定
+```
+
+判斷 `this` 的步驟：
+
+1. 是否為 `new` 呼叫？→ `this` = 新物件
+2. 是否用 `call`/`apply`/`bind`？→ `this` = 指定的物件
+3. 是否透過物件呼叫？→ `this` = 該物件
+4. 都不是？→ `this` = `window`（嚴格模式為 `undefined`）
+5. 箭頭函式？→ 忽略以上規則，繼承外層 `this`
+
+## 互動範例
+
+<CodePlayground
+  title="this 綁定行為實驗"
+  defaultJS={`// === 隱式綁定 ===
+const user = {
+  name: 'Alice',
+  greet() {
+    return 'Hi, I am ' + this.name;
+  }
+};
+console.log('隱式綁定:', user.greet());
+
+// 綁定丟失
+const fn = user.greet;
+console.log('綁定丟失:', fn()); // this.name 為 undefined
+console.log('---');
+
+// === 顯式綁定 ===
+function introduce(lang) {
+  const greetings = { zh: '你好', en: 'Hello' };
+  return greetings[lang] + ', ' + this.name;
+}
+
+const bob = { name: 'Bob' };
+console.log('call:', introduce.call(bob, 'zh'));
+console.log('apply:', introduce.apply(bob, ['en']));
+
+const boundFn = introduce.bind(bob, 'zh');
+console.log('bind:', boundFn());
+console.log('---');
+
+// === new 綁定 ===
+function Animal(type) {
+  this.type = type;
+  this.describe = function() {
+    return '我是 ' + this.type;
+  };
+}
+const cat = new Animal('貓');
+console.log('new 綁定:', cat.describe());
+console.log('---');
+
+// === 箭頭函式 ===
+const team = {
+  name: '前端組',
+  members: ['小明', '小華'],
+  show() {
+    // 箭頭函式繼承 show 的 this
+    this.members.forEach(member => {
+      console.log(this.name + ' - ' + member);
+    });
+  }
+};
+team.show();
+console.log('---');
+
+// === 優先級測試 ===
+function Foo(val) {
+  this.val = val;
+}
+const bar = { val: '隱式' };
+const boundFoo = Foo.bind(bar);
+const obj = new boundFoo('new 優先');
+console.log('bind 的值:', bar.val);   // '隱式'（bind 未改變）
+console.log('new 的值:', obj.val);    // 'new 優先'（new > bind）`}
+/>
+
+理解 `this` 之後，我們就可以深入探討原型與繼承——JavaScript 物件導向的核心機制。

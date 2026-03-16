@@ -1,0 +1,336 @@
+# DOM 操作
+
+DOM（Document Object Model）是瀏覽器將 HTML 文件解析後產生的樹狀結構。JavaScript 透過 DOM API 來存取和操作網頁元素，實現動態互動效果。
+
+## 選取元素
+
+### querySelector / querySelectorAll
+
+現代 DOM 查詢的首選方法，支援 CSS 選擇器語法：
+
+```js
+// 選取單一元素（第一個匹配的）
+const header = document.querySelector('h1');
+const btn = document.querySelector('.btn-primary');
+const email = document.querySelector('#email');
+const nav = document.querySelector('nav > ul > li:first-child');
+
+// 選取多個元素（回傳 NodeList）
+const items = document.querySelectorAll('.list-item');
+const links = document.querySelectorAll('a[href^="https"]');
+
+// NodeList 可用 forEach，但不是完整的陣列
+items.forEach(item => console.log(item.textContent));
+
+// 轉為真正的陣列
+const itemsArray = [...document.querySelectorAll('.item')];
+const filtered = itemsArray.filter(el => el.classList.contains('active'));
+```
+
+<Callout type="tip" title="querySelector vs getElementById">
+`querySelector` 更靈活，支援任何 CSS 選擇器。`getElementById` 速度稍快但只能用 ID 查詢。在大多數場景中，效能差異可忽略不計，建議統一使用 `querySelector` 系列。
+</Callout>
+
+### 其他選取方法
+
+```js
+// 較舊但仍常見的方法
+document.getElementById('myId');           // 單一元素
+document.getElementsByClassName('myClass'); // HTMLCollection（活的）
+document.getElementsByTagName('div');       // HTMLCollection（活的）
+
+// HTMLCollection vs NodeList
+// HTMLCollection 是「活的」 — 會隨 DOM 變化自動更新
+// querySelectorAll 的 NodeList 是「靜態的」 — 不會自動更新
+```
+
+## 建立與插入元素
+
+### createElement / appendChild
+
+```js
+// 建立新元素
+const div = document.createElement('div');
+div.id = 'new-div';
+div.className = 'card';
+div.textContent = '這是新元素';
+
+// 插入到 DOM
+document.body.appendChild(div);
+
+// 插入到特定位置
+const container = document.querySelector('.container');
+const reference = document.querySelector('.reference');
+
+// insertBefore — 在參考元素之前插入
+container.insertBefore(div, reference);
+
+// 現代方法 — 更直覺
+container.prepend(div);     // 插入為第一個子元素
+container.append(div);      // 插入為最後一個子元素
+reference.before(div);      // 插入在 reference 之前
+reference.after(div);       // 插入在 reference 之後
+```
+
+### 移除元素
+
+```js
+// 現代方法
+element.remove();
+
+// 傳統方法
+parent.removeChild(child);
+
+// 移除所有子元素
+while (container.firstChild) {
+  container.removeChild(container.firstChild);
+}
+// 或
+container.innerHTML = ''; // 更簡潔但有安全性考量
+```
+
+### 複製元素
+
+```js
+const original = document.querySelector('.template');
+const clone = original.cloneNode(true);  // true = 深複製（含子元素）
+const shallow = original.cloneNode(false); // false = 淺複製（不含子元素）
+```
+
+## innerHTML vs textContent vs innerText
+
+這三個屬性容易混淆，功能卻有明顯差異：
+
+```js
+const el = document.querySelector('.example');
+
+// textContent — 取得/設定純文字（包含隱藏元素的文字）
+el.textContent = '純文字內容'; // 不解析 HTML
+
+// innerText — 取得可見的文字（觸發回流，效能較差）
+console.log(el.innerText); // 只回傳使用者能看到的文字
+
+// innerHTML — 取得/設定 HTML 內容
+el.innerHTML = '<strong>粗體</strong> 文字'; // 會解析 HTML
+```
+
+<Callout type="warning" title="XSS 安全風險">
+**永遠不要**將使用者輸入直接放入 `innerHTML`！這會造成跨站腳本攻擊（XSS）。如果需要顯示使用者輸入，請使用 `textContent`。
+</Callout>
+
+```js
+// ✗ 危險
+element.innerHTML = userInput; // 使用者可注入 <script> 標籤
+
+// ✓ 安全
+element.textContent = userInput; // 純文字，不會解析 HTML
+```
+
+## classList 操作
+
+`classList` 提供了方便的 CSS class 操作方法：
+
+```js
+const el = document.querySelector('.box');
+
+// 新增 class
+el.classList.add('active');
+el.classList.add('highlight', 'visible'); // 一次加多個
+
+// 移除 class
+el.classList.remove('hidden');
+
+// 切換 class
+el.classList.toggle('dark-mode');
+el.classList.toggle('collapsed', isCollapsed); // 第二個參數控制
+
+// 檢查是否有某個 class
+if (el.classList.contains('active')) {
+  console.log('元素是活躍的');
+}
+
+// 取代 class
+el.classList.replace('old-class', 'new-class');
+```
+
+## dataset 屬性
+
+`data-*` 自訂屬性提供了在 HTML 中儲存資料的方式：
+
+```html
+<div id="user" data-user-id="42" data-role="admin" data-is-active="true">
+  Alice
+</div>
+```
+
+```js
+const el = document.querySelector('#user');
+
+// 讀取 data 屬性（注意：kebab-case 轉 camelCase）
+console.log(el.dataset.userId);   // '42'（data-user-id → userId）
+console.log(el.dataset.role);     // 'admin'
+console.log(el.dataset.isActive); // 'true'（永遠是字串）
+
+// 設定 data 屬性
+el.dataset.score = '100';
+// HTML 會變成：data-score="100"
+
+// 刪除 data 屬性
+delete el.dataset.role;
+```
+
+## DocumentFragment
+
+`DocumentFragment` 是一個輕量級的 DOM 容器，用來批量操作元素以提升效能：
+
+```js
+// ✗ 效能差 — 每次 appendChild 都觸發回流
+const list = document.querySelector('#list');
+for (let i = 0; i < 1000; i++) {
+  const li = document.createElement('li');
+  li.textContent = `Item ${i}`;
+  list.appendChild(li); // 1000 次回流
+}
+
+// ✓ 效能好 — 使用 DocumentFragment
+const fragment = document.createDocumentFragment();
+for (let i = 0; i < 1000; i++) {
+  const li = document.createElement('li');
+  li.textContent = `Item ${i}`;
+  fragment.appendChild(li); // 不觸發回流
+}
+list.appendChild(fragment); // 只觸發 1 次回流
+```
+
+<Callout type="tip" title="減少回流（Reflow）">
+回流是瀏覽器重新計算元素位置與大小的過程，非常耗費效能。批量操作 DOM 時，使用 `DocumentFragment` 或先將元素從 DOM 移除、修改完再放回，都能有效減少回流次數。
+</Callout>
+
+## 樣式操作
+
+```js
+const el = document.querySelector('.box');
+
+// 直接設定 style（行內樣式）
+el.style.backgroundColor = 'red';
+el.style.fontSize = '16px';
+el.style.cssText = 'color: white; padding: 10px;'; // 一次設定多個
+
+// 取得計算後的樣式
+const computed = getComputedStyle(el);
+console.log(computed.backgroundColor);
+console.log(computed.fontSize);
+```
+
+## 互動範例
+
+<CodePlayground
+  title="DOM 操作實驗"
+  defaultHTML={`<div id="app">
+  <h3>待辦清單</h3>
+  <div style="margin-bottom: 10px;">
+    <input type="text" id="todo-input" placeholder="輸入待辦事項..." style="padding: 6px; width: 200px;">
+    <button id="add-btn" style="padding: 6px 12px; cursor: pointer;">新增</button>
+  </div>
+  <ul id="todo-list"></ul>
+  <p id="count">共 0 項</p>
+</div>`}
+  defaultCSS={`.todo-item {
+  padding: 8px;
+  margin: 4px 0;
+  background: #f0f0f0;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  list-style: none;
+}
+.todo-item.done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.todo-item button {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.todo-item button:hover {
+  background: #c0392b;
+}`}
+  defaultJS={`const input = document.querySelector('#todo-input');
+const addBtn = document.querySelector('#add-btn');
+const list = document.querySelector('#todo-list');
+const countEl = document.querySelector('#count');
+
+function updateCount() {
+  const total = list.querySelectorAll('.todo-item').length;
+  const done = list.querySelectorAll('.todo-item.done').length;
+  countEl.textContent = '共 ' + total + ' 項，已完成 ' + done + ' 項';
+}
+
+function addTodo() {
+  const text = input.value.trim();
+  if (!text) return;
+
+  // createElement 建立元素
+  const li = document.createElement('li');
+  li.className = 'todo-item';
+  li.dataset.createdAt = Date.now();
+
+  const span = document.createElement('span');
+  span.textContent = text;
+  span.style.cursor = 'pointer';
+
+  // 點擊文字切換完成狀態（classList.toggle）
+  span.addEventListener('click', () => {
+    li.classList.toggle('done');
+    updateCount();
+  });
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.textContent = '刪除';
+  deleteBtn.addEventListener('click', () => {
+    li.remove(); // 現代的移除方式
+    updateCount();
+  });
+
+  li.appendChild(span);
+  li.appendChild(deleteBtn);
+  list.appendChild(li);
+
+  input.value = '';
+  updateCount();
+}
+
+addBtn.addEventListener('click', addTodo);
+input.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') addTodo();
+});
+
+// 用 DocumentFragment 批量新增示範項目
+const fragment = document.createDocumentFragment();
+['學習 JavaScript', '練習 DOM 操作', '完成專案'].forEach(text => {
+  const li = document.createElement('li');
+  li.className = 'todo-item';
+  const span = document.createElement('span');
+  span.textContent = text;
+  span.style.cursor = 'pointer';
+  span.addEventListener('click', () => {
+    li.classList.toggle('done');
+    updateCount();
+  });
+  const btn = document.createElement('button');
+  btn.textContent = '刪除';
+  btn.addEventListener('click', () => { li.remove(); updateCount(); });
+  li.appendChild(span);
+  li.appendChild(btn);
+  fragment.appendChild(li);
+});
+list.appendChild(fragment); // 一次插入，減少回流
+updateCount();`}
+/>
+
+掌握 DOM 操作後，下一章我們將學習事件委派與冒泡機制，這是高效事件處理的核心技巧。

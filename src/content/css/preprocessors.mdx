@@ -1,0 +1,338 @@
+# 預處理器概念
+
+CSS 預處理器（Preprocessor）是一種擴展 CSS 語法的工具，加入變數、巢狀、mixin 等程式化功能，讓大型專案的樣式表更容易管理。常見的預處理器有 SASS/SCSS、Less 和 Stylus。然而，現代 CSS 已經原生支援了許多曾經需要預處理器的功能。
+
+## 為什麼需要預處理器？
+
+原生 CSS 過去缺乏一些開發效率功能：
+
+- **無法重用值**：相同的色碼需要到處重複
+- **平面結構**：無法巢狀撰寫，導致選擇器冗長
+- **缺少邏輯**：沒有函式、條件判斷、迴圈
+- **無法模組化**：難以拆分和組合樣式表
+
+預處理器解決了這些問題，但需要編譯步驟將其轉換為標準 CSS。
+
+## 核心功能
+
+### 變數
+
+```scss
+// SASS/SCSS
+$primary-color: #2196F3;
+$font-stack: 'Noto Sans TC', sans-serif;
+$spacing: 8px;
+
+.button {
+  color: $primary-color;
+  font-family: $font-stack;
+  padding: $spacing $spacing * 2;
+}
+```
+
+```less
+// Less
+@primary-color: #2196F3;
+@spacing: 8px;
+
+.button {
+  color: @primary-color;
+  padding: @spacing @spacing * 2;
+}
+```
+
+### 巢狀（Nesting）
+
+```scss
+// SASS/SCSS
+.navbar {
+  background: #333;
+  padding: 16px;
+
+  .logo {
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 16px;
+
+    a {
+      color: white;
+      text-decoration: none;
+
+      &:hover {
+        color: #90CAF9;
+      }
+
+      &.active {
+        font-weight: bold;
+      }
+    }
+  }
+}
+```
+
+`&` 符號代表父選擇器的引用，編譯後會產生：
+
+```css
+.navbar { background: #333; padding: 16px; }
+.navbar .logo { font-size: 20px; font-weight: bold; }
+.navbar .nav-links { display: flex; gap: 16px; }
+.navbar .nav-links a { color: white; text-decoration: none; }
+.navbar .nav-links a:hover { color: #90CAF9; }
+.navbar .nav-links a.active { font-weight: bold; }
+```
+
+### Mixin（混入）
+
+Mixin 是可重用的樣式片段，可以接受參數：
+
+```scss
+// 定義 mixin
+@mixin flex-center($direction: row) {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: $direction;
+}
+
+@mixin responsive($breakpoint) {
+  @if $breakpoint == tablet {
+    @media (min-width: 768px) { @content; }
+  } @else if $breakpoint == desktop {
+    @media (min-width: 1024px) { @content; }
+  }
+}
+
+// 使用 mixin
+.hero {
+  @include flex-center(column);
+  min-height: 100vh;
+
+  @include responsive(tablet) {
+    padding: 40px;
+  }
+}
+```
+
+### 繼承（Extend）
+
+```scss
+%button-base {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-primary {
+  @extend %button-base;
+  background: #2196F3;
+  color: white;
+}
+
+.btn-secondary {
+  @extend %button-base;
+  background: #E0E0E0;
+  color: #333;
+}
+```
+
+### 函式與運算
+
+```scss
+// SASS 內建函式
+$base-color: #2196F3;
+
+.element {
+  background: lighten($base-color, 20%);
+  border-color: darken($base-color, 15%);
+  color: rgba($base-color, 0.8);
+}
+
+// 自訂函式
+@function spacing($multiplier) {
+  @return 8px * $multiplier;
+}
+
+.card {
+  padding: spacing(2); // 16px
+  margin-bottom: spacing(3); // 24px
+}
+```
+
+## SASS vs Less 比較
+
+| 功能 | SASS/SCSS | Less |
+|------|-----------|------|
+| 變數 | `$variable` | `@variable` |
+| 巢狀 | 支援 | 支援 |
+| Mixin | `@mixin` / `@include` | `.mixin()` |
+| 繼承 | `@extend` | `:extend()` |
+| 條件判斷 | `@if / @else` | `when` |
+| 迴圈 | `@for / @each / @while` | 遞迴 mixin |
+| 函式 | `@function` | 有限的函式支援 |
+| 生態系 | 較大 | 較小 |
+
+<Callout type="tip" title="SCSS vs SASS 語法">
+SASS 有兩種語法：`.sass`（縮排語法，不需要大括號和分號）和 `.scss`（類似 CSS 的語法）。`.scss` 是目前的主流，因為它相容原生 CSS 語法，學習成本較低。
+</Callout>
+
+## 現代 CSS 已支援的功能
+
+現代 CSS 已經原生支援了許多預處理器的核心功能：
+
+| 預處理器功能 | 現代 CSS 替代方案 | 支援狀況 |
+|-------------|------------------|----------|
+| 變數 | CSS Custom Properties (`--var`) | 所有瀏覽器 |
+| 巢狀 | CSS Nesting | 主流瀏覽器 |
+| 色彩函式 | `color-mix()`, `hsl()` | 主流瀏覽器 |
+| 數學運算 | `calc()`, `min()`, `max()`, `clamp()` | 所有瀏覽器 |
+| 模組化 | `@layer` (Cascade Layers) | 主流瀏覽器 |
+| Mixin | 無直接替代（提案中） | 尚未支援 |
+
+<Callout type="warning" title="預處理器仍有價值">
+儘管原生 CSS 進步很大，SASS 的 mixin、extend、迴圈、條件判斷等功能仍然無法被完全取代。在大型專案中，預處理器搭配現代 CSS 功能一起使用是常見的做法。
+</Callout>
+
+## 互動範例：原生 CSS Nesting
+
+<CodePlayground
+  title="CSS 原生巢狀語法"
+  defaultHTML={`<nav class="main-nav">
+  <div class="logo">MyApp</div>
+  <ul class="menu">
+    <li><a href="#" class="active">首頁</a></li>
+    <li><a href="#">產品</a></li>
+    <li><a href="#">關於</a></li>
+    <li><a href="#">聯絡</a></li>
+  </ul>
+</nav>
+
+<div class="card-list">
+  <article class="card">
+    <h3>文章標題</h3>
+    <p>這是使用原生 CSS Nesting 寫的樣式。</p>
+    <footer>
+      <span class="tag">CSS</span>
+      <span class="tag featured">精選</span>
+    </footer>
+  </article>
+  <article class="card">
+    <h3>第二篇文章</h3>
+    <p>巢狀語法讓 CSS 結構更清晰。</p>
+    <footer>
+      <span class="tag">前端</span>
+    </footer>
+  </article>
+</div>`}
+  defaultCSS={`/* 原生 CSS Nesting — 不需要預處理器 */
+body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 12px;
+  background: #f5f5f5;
+}
+
+.main-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #1a1a2e;
+  padding: 12px 20px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+
+  /* 巢狀子選擇器 */
+  & .logo {
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  & .menu {
+    display: flex;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+
+    & a {
+      color: #aaa;
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      transition: all 0.2s;
+
+      &:hover {
+        color: white;
+        background: rgba(255,255,255,0.1);
+      }
+
+      &.active {
+        color: white;
+        background: #7c4dff;
+      }
+    }
+  }
+}
+
+.card-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+
+  & h3 {
+    margin: 0 0 8px;
+    color: #1a1a2e;
+  }
+
+  & p {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 12px;
+  }
+
+  & footer {
+    display: flex;
+    gap: 8px;
+  }
+
+  & .tag {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: #e3f2fd;
+    color: #1565c0;
+
+    &.featured {
+      background: #fff3e0;
+      color: #e65100;
+    }
+  }
+}`}
+  defaultJS={``}
+/>
+
+## 遷移策略
+
+如果你正考慮從預處理器遷移到原生 CSS，建議的策略是：
+
+1. **新功能使用原生 CSS 變數**取代 SASS 變數
+2. **逐步採用 CSS Nesting**，替換巢狀語法
+3. **保留 SASS mixin**，直到 CSS 原生支援類似功能
+4. **使用 PostCSS** 作為過渡工具，自動加上瀏覽器前綴
+5. **利用 `@layer`** 管理樣式的優先順序
+
+最終目標不一定是完全移除預處理器，而是減少對它的依賴，讓專案更接近標準 CSS。

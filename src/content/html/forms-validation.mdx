@@ -1,0 +1,360 @@
+# 表單與驗證
+
+表單是網頁中最常見的互動元素之一，從簡單的登入頁面到複雜的多步驟問卷，表單無處不在。掌握表單元素的使用與驗證機制，是前端開發的核心技能。
+
+## 表單元素
+
+### input 元素與常見 type
+
+`<input>` 是最多功能的表單元素，透過不同的 `type` 屬性，可以建立各種輸入介面：
+
+| type | 說明 | 範例 |
+|------|------|------|
+| `text` | 單行文字輸入 | 姓名、帳號 |
+| `password` | 密碼輸入（遮罩） | 密碼欄位 |
+| `email` | 電子郵件（自帶格式驗證） | Email 欄位 |
+| `number` | 數字輸入 | 年齡、數量 |
+| `tel` | 電話號碼 | 手機號碼 |
+| `url` | 網址輸入 | 個人網站 |
+| `date` | 日期選擇器 | 生日 |
+| `range` | 滑桿 | 音量、亮度 |
+| `checkbox` | 核取方塊 | 同意條款 |
+| `radio` | 單選按鈕 | 性別選擇 |
+| `file` | 檔案上傳 | 大頭照 |
+| `color` | 顏色選擇器 | 主題色 |
+| `hidden` | 隱藏欄位 | 傳遞額外資料 |
+
+### 其他表單元素
+
+- **`<textarea>`** — 多行文字輸入，可設定 `rows` 和 `cols`。
+- **`<select>` 和 `<option>`** — 下拉選單。可搭配 `<optgroup>` 分組。
+- **`<button>`** — 按鈕。`type` 可以是 `submit`、`reset` 或 `button`。
+- **`<label>`** — 為表單元素提供標籤，點擊標籤可聚焦到對應的輸入欄。
+- **`<fieldset>` 和 `<legend>`** — 將相關的表單元素分組，並提供說明。
+- **`<datalist>`** — 提供輸入建議清單。
+- **`<output>`** — 顯示計算結果。
+
+<Callout type="tip" title="提示">
+永遠使用 `<label>` 搭配表單元素。可以透過 `for` 屬性連結到 `input` 的 `id`，或將 `input` 包裹在 `<label>` 之內。這對無障礙至關重要。
+</Callout>
+
+## 原生 HTML 驗證
+
+HTML5 提供了豐富的原生驗證屬性，無需 JavaScript 即可進行基本的表單驗證：
+
+### 常用驗證屬性
+
+| 屬性 | 說明 | 適用元素 |
+|------|------|---------|
+| `required` | 必填欄位 | 大多數 input |
+| `minlength` / `maxlength` | 文字長度限制 | text, textarea |
+| `min` / `max` | 數值範圍限制 | number, date, range |
+| `step` | 數值步進 | number, range |
+| `pattern` | 正則表達式驗證 | text, tel, email |
+| `multiple` | 允許多個值 | email, file |
+
+### 驗證相關的 CSS 偽類
+
+瀏覽器會根據驗證狀態自動套用 CSS 偽類：
+
+```css
+input:valid { border-color: green; }
+input:invalid { border-color: red; }
+input:required { border-left: 3px solid orange; }
+input:optional { border-left: 3px solid gray; }
+input:focus:invalid { box-shadow: 0 0 3px red; }
+```
+
+## 自訂驗證 — Validity API
+
+當原生驗證不夠用時，可以使用 JavaScript 的 Constraint Validation API 來實作自訂驗證。
+
+### 核心方法
+
+```js
+const input = document.querySelector('#myInput');
+
+// 檢查是否通過驗證
+input.checkValidity();      // 回傳 true/false
+input.reportValidity();     // 回傳 true/false 並顯示提示
+
+// 設定自訂錯誤訊息
+input.setCustomValidity('密碼不符合要求');
+
+// 清除自訂錯誤（設為空字串）
+input.setCustomValidity('');
+```
+
+### ValidityState 物件
+
+每個表單元素都有 `validity` 屬性，它是一個 `ValidityState` 物件：
+
+```js
+input.validity.valueMissing;   // required 但未填
+input.validity.typeMismatch;   // 類型不符（如 email 格式錯誤）
+input.validity.patternMismatch;// 不符合 pattern
+input.validity.tooLong;        // 超過 maxlength
+input.validity.tooShort;       // 短於 minlength
+input.validity.rangeOverflow;  // 超過 max
+input.validity.rangeUnderflow; // 低於 min
+input.validity.stepMismatch;   // 不符合 step
+input.validity.customError;    // 有自訂錯誤
+input.validity.valid;          // 整體是否有效
+```
+
+<Callout type="info" title="資訊">
+`setCustomValidity()` 設定非空字串後，元素會被標記為 invalid。記得在輸入改變時清除自訂錯誤，否則即使輸入正確也無法通過驗證。
+</Callout>
+
+## 互動範例：表單驗證
+
+以下範例展示了一個完整的註冊表單，結合原生驗證與自訂驗證：
+
+<CodePlayground
+  title="表單驗證範例"
+  defaultHTML={`<form id="registerForm" novalidate>
+  <h2>會員註冊</h2>
+
+  <div class="field">
+    <label for="username">使用者名稱</label>
+    <input type="text" id="username" name="username"
+           required minlength="3" maxlength="20"
+           pattern="[a-zA-Z0-9_]+"
+           placeholder="3-20 字元，僅限英數字與底線">
+    <span class="error" id="usernameError"></span>
+  </div>
+
+  <div class="field">
+    <label for="email">電子郵件</label>
+    <input type="email" id="email" name="email"
+           required placeholder="example@mail.com">
+    <span class="error" id="emailError"></span>
+  </div>
+
+  <div class="field">
+    <label for="password">密碼</label>
+    <input type="password" id="password" name="password"
+           required minlength="8"
+           placeholder="至少 8 個字元">
+    <span class="error" id="passwordError"></span>
+  </div>
+
+  <div class="field">
+    <label for="confirmPassword">確認密碼</label>
+    <input type="password" id="confirmPassword"
+           name="confirmPassword" required
+           placeholder="再次輸入密碼">
+    <span class="error" id="confirmError"></span>
+  </div>
+
+  <div class="field">
+    <label for="age">年齡</label>
+    <input type="number" id="age" name="age"
+           min="13" max="120" placeholder="13-120">
+    <span class="error" id="ageError"></span>
+  </div>
+
+  <div class="field checkbox-field">
+    <input type="checkbox" id="terms" name="terms" required>
+    <label for="terms">我同意服務條款</label>
+    <span class="error" id="termsError"></span>
+  </div>
+
+  <button type="submit">註冊</button>
+  <div id="result"></div>
+</form>`}
+  defaultCSS={`* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: sans-serif; padding: 1.5rem; background: #f9fafb; }
+
+form {
+  max-width: 400px;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+h2 { margin-bottom: 1rem; color: #333; }
+
+.field {
+  margin-bottom: 1rem;
+}
+label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #555;
+}
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"] {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+}
+input:focus {
+  outline: none;
+  border-color: #4a90d9;
+}
+input.valid { border-color: #4caf50; }
+input.invalid { border-color: #f44336; }
+
+.error {
+  display: block;
+  color: #f44336;
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  margin-top: 0.2rem;
+}
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.checkbox-field label { margin-bottom: 0; }
+.checkbox-field .error { width: 100%; }
+
+button {
+  width: 100%;
+  padding: 0.7rem;
+  background: #4a90d9;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+button:hover { background: #357abd; }
+
+#result {
+  margin-top: 1rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 600;
+}
+#result.success { background: #e8f5e9; color: #2e7d32; }
+#result.fail { background: #fce4ec; color: #c62828; }`}
+  defaultJS={`const form = document.getElementById('registerForm');
+const password = document.getElementById('password');
+const confirmPassword = document.getElementById('confirmPassword');
+
+// 自訂驗證：確認密碼是否一致
+function checkPasswordMatch() {
+  if (confirmPassword.value !== password.value) {
+    confirmPassword.setCustomValidity('密碼不一致');
+  } else {
+    confirmPassword.setCustomValidity('');
+  }
+}
+
+password.addEventListener('input', checkPasswordMatch);
+confirmPassword.addEventListener('input', checkPasswordMatch);
+
+// 即時驗證回饋
+const inputs = form.querySelectorAll('input');
+inputs.forEach(input => {
+  input.addEventListener('blur', function() {
+    validateField(this);
+  });
+  input.addEventListener('input', function() {
+    if (this.classList.contains('invalid')) {
+      validateField(this);
+    }
+  });
+});
+
+function validateField(input) {
+  const errorSpan = input.parentElement.querySelector('.error');
+  if (input.checkValidity()) {
+    input.classList.remove('invalid');
+    input.classList.add('valid');
+    if (errorSpan) errorSpan.textContent = '';
+  } else {
+    input.classList.remove('valid');
+    input.classList.add('invalid');
+    if (errorSpan) errorSpan.textContent = getErrorMessage(input);
+  }
+}
+
+function getErrorMessage(input) {
+  if (input.validity.valueMissing) return '此欄位為必填';
+  if (input.validity.typeMismatch) return '格式不正確';
+  if (input.validity.tooShort)
+    return '至少需要 ' + input.minLength + ' 個字元';
+  if (input.validity.patternMismatch)
+    return '僅限英數字與底線';
+  if (input.validity.rangeOverflow)
+    return '不可超過 ' + input.max;
+  if (input.validity.rangeUnderflow)
+    return '不可低於 ' + input.min;
+  if (input.validity.customError)
+    return input.validationMessage;
+  return '輸入不正確';
+}
+
+// 表單提交
+form.addEventListener('submit', function(e) {
+  e.preventDefault();
+  let allValid = true;
+
+  inputs.forEach(input => {
+    validateField(input);
+    if (!input.checkValidity()) allValid = false;
+  });
+
+  const result = document.getElementById('result');
+  if (allValid) {
+    result.className = 'success';
+    result.textContent = '驗證通過！表單已成功提交。';
+  } else {
+    result.className = 'fail';
+    result.textContent = '請修正上方的錯誤後再提交。';
+  }
+});`}
+/>
+
+## 表單提交方式
+
+### 傳統提交
+
+```html
+<form action="/api/register" method="POST">
+  <!-- method 可以是 GET 或 POST -->
+  <!-- enctype 預設為 application/x-www-form-urlencoded -->
+  <!-- 上傳檔案時需要 multipart/form-data -->
+</form>
+```
+
+### JavaScript 提交（現代做法）
+
+```js
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(form);
+  // 也可以轉為 JSON
+  const data = Object.fromEntries(formData);
+
+  const response = await fetch('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+});
+```
+
+<Callout type="warning" title="注意">
+使用 `novalidate` 屬性可以停用瀏覽器的原生驗證 UI，這在你想要完全自訂驗證體驗時很有用。但請確保你在 JavaScript 中實作了完整的驗證邏輯。即使前端做了驗證，後端驗證仍然是不可或缺的。
+</Callout>
+
+## 總結
+
+- 選擇正確的 `input type`，讓瀏覽器提供最佳的輸入體驗（如手機上的數字鍵盤）。
+- 善用原生驗證屬性（`required`、`pattern`、`min`/`max` 等），減少 JavaScript 的撰寫量。
+- 需要複雜驗證時，使用 Constraint Validation API（`setCustomValidity`、`validity` 物件）。
+- 永遠記得後端也要做驗證，前端驗證只是改善使用者體驗，不能取代安全性驗證。

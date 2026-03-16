@@ -1,0 +1,329 @@
+# 錯誤處理
+
+良好的錯誤處理是撰寫健壯 JavaScript 應用的關鍵。了解如何捕獲、拋出與自訂錯誤，能幫助你更快速地定位問題並提供更好的使用者體驗。
+
+## Error 物件與常見錯誤類型
+
+JavaScript 內建多種錯誤類型，全部繼承自 `Error` 基礎類別：
+
+```js
+// Error 基本屬性
+const error = new Error('發生錯誤了');
+console.log(error.message);  // '發生錯誤了'
+console.log(error.name);     // 'Error'
+console.log(error.stack);    // 完整的堆疊追蹤
+
+// 常見內建錯誤類型
+new TypeError('型別錯誤');        // 型別不符時
+new ReferenceError('引用錯誤');   // 存取不存在的變數
+new SyntaxError('語法錯誤');      // 語法解析失敗
+new RangeError('範圍錯誤');       // 數值超出有效範圍
+new URIError('URI 錯誤');        // URI 處理函式使用不當
+new EvalError('Eval 錯誤');      // eval() 相關錯誤
+```
+
+<Callout type="info" title="常見觸發場景">
+- **TypeError**：對 `null` 或 `undefined` 存取屬性、呼叫非函式的值
+- **ReferenceError**：使用未宣告的變數
+- **RangeError**：`new Array(-1)` 或遞迴過深造成 stack overflow
+- **SyntaxError**：`JSON.parse('{invalid}')` 等語法解析失敗
+</Callout>
+
+## try/catch/finally
+
+`try/catch/finally` 是 JavaScript 中最基本的錯誤處理結構：
+
+```js
+try {
+  // 可能拋出錯誤的程式碼
+  const data = JSON.parse('{"name": "Alice"}');
+  console.log(data.name);
+} catch (error) {
+  // 捕獲並處理錯誤
+  console.error('解析失敗:', error.message);
+} finally {
+  // 無論是否發生錯誤都會執行
+  console.log('清理工作完成');
+}
+```
+
+### 巢狀 try/catch
+
+```js
+try {
+  try {
+    throw new Error('內層錯誤');
+  } catch (innerError) {
+    console.log('內層捕獲:', innerError.message);
+    throw innerError; // 重新拋出
+  }
+} catch (outerError) {
+  console.log('外層捕獲:', outerError.message);
+}
+```
+
+### 條件捕獲
+
+JavaScript 沒有語法層級的條件 catch，但可以透過 `instanceof` 判斷：
+
+```js
+try {
+  fetchData();
+} catch (error) {
+  if (error instanceof TypeError) {
+    console.error('型別錯誤:', error.message);
+  } else if (error instanceof RangeError) {
+    console.error('範圍錯誤:', error.message);
+  } else {
+    throw error; // 未知錯誤，重新拋出
+  }
+}
+```
+
+## throw 自訂錯誤
+
+你可以使用 `throw` 拋出任何值，但建議拋出 Error 物件：
+
+```js
+function divide(a, b) {
+  if (typeof a !== 'number' || typeof b !== 'number') {
+    throw new TypeError('參數必須是數字');
+  }
+  if (b === 0) {
+    throw new RangeError('除數不能為零');
+  }
+  return a / b;
+}
+
+function validateAge(age) {
+  if (age < 0 || age > 150) {
+    throw new RangeError(`年齡 ${age} 不在有效範圍內`);
+  }
+  return true;
+}
+```
+
+<Callout type="warning" title="不要拋出非 Error 值">
+雖然 `throw 'error'` 或 `throw 42` 語法上合法，但這會失去堆疊追蹤資訊，讓除錯變得困難。請始終拋出 Error 物件或其子類別的實例。
+</Callout>
+
+## 自訂 Error 類別
+
+建立自訂錯誤類別，可以更精確地區分不同的錯誤場景：
+
+```js
+class ValidationError extends Error {
+  constructor(field, message) {
+    super(message);
+    this.name = 'ValidationError';
+    this.field = field;
+  }
+}
+
+class HttpError extends Error {
+  constructor(statusCode, message) {
+    super(message);
+    this.name = 'HttpError';
+    this.statusCode = statusCode;
+  }
+}
+
+class NotFoundError extends HttpError {
+  constructor(resource) {
+    super(404, `${resource} 不存在`);
+    this.name = 'NotFoundError';
+    this.resource = resource;
+  }
+}
+
+// 使用
+try {
+  throw new ValidationError('email', '電子郵件格式不正確');
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.log(`欄位 ${error.field}: ${error.message}`);
+  }
+}
+```
+
+## 非同步錯誤處理
+
+### Promise 的錯誤處理
+
+```js
+// .catch() 方法
+fetch('/api/data')
+  .then(res => res.json())
+  .then(data => console.log(data))
+  .catch(error => console.error('請求失敗:', error));
+
+// async/await 配合 try/catch
+async function loadData() {
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) throw new HttpError(res.status, '請求失敗');
+    return await res.json();
+  } catch (error) {
+    if (error instanceof HttpError) {
+      console.error(`HTTP ${error.statusCode}: ${error.message}`);
+    } else {
+      console.error('網路錯誤:', error);
+    }
+  }
+}
+```
+
+## 全域錯誤處理
+
+### window.onerror
+
+捕獲未被 try/catch 處理的同步錯誤：
+
+```js
+window.onerror = function (message, source, lineno, colno, error) {
+  console.error('全域錯誤:', {
+    message,
+    source,       // 錯誤發生的檔案 URL
+    lineno,       // 行號
+    colno,        // 列號
+    error,        // Error 物件
+  });
+  // 回傳 true 可以阻止瀏覽器預設的錯誤處理
+  return true;
+};
+```
+
+### window.addEventListener('error')
+
+```js
+window.addEventListener('error', (event) => {
+  console.error('錯誤事件:', event.error);
+  event.preventDefault(); // 阻止預設處理
+});
+```
+
+### unhandledrejection
+
+捕獲未處理的 Promise 拒絕：
+
+```js
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('未處理的 Promise 拒絕:', event.reason);
+  event.preventDefault();
+
+  // 上報錯誤至監控系統
+  reportError({
+    type: 'unhandledrejection',
+    reason: event.reason?.message || String(event.reason),
+  });
+});
+```
+
+## 互動範例
+
+<CodePlayground
+  title="錯誤處理實作"
+  defaultHTML={`<div id="app">
+  <h3>錯誤處理示範</h3>
+  <button id="typeError">觸發 TypeError</button>
+  <button id="customError">觸發自訂錯誤</button>
+  <button id="asyncError">非同步錯誤</button>
+  <button id="tryCatch">try/catch 範例</button>
+  <pre id="output" style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;min-height:80px;margin-top:12px;"></pre>
+</div>`}
+  defaultCSS={`button {
+  padding: 8px 14px;
+  margin: 4px;
+  border: none;
+  background: #ef4444;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { background: #dc2626; }
+#app { font-family: sans-serif; }`}
+  defaultJS={`const output = document.getElementById('output');
+
+function log(msg) {
+  output.textContent += msg + '\\n';
+}
+
+// 自訂錯誤類別
+class ValidationError extends Error {
+  constructor(field, message) {
+    super(message);
+    this.name = 'ValidationError';
+    this.field = field;
+  }
+}
+
+// TypeError 示範
+document.getElementById('typeError').addEventListener('click', () => {
+  output.textContent = '';
+  try {
+    const obj = null;
+    obj.property; // TypeError!
+  } catch (error) {
+    log('捕獲到: ' + error.name);
+    log('訊息: ' + error.message);
+    log('型別: ' + (error instanceof TypeError));
+  }
+});
+
+// 自訂錯誤
+document.getElementById('customError').addEventListener('click', () => {
+  output.textContent = '';
+  try {
+    const email = 'invalid-email';
+    if (!email.includes('@')) {
+      throw new ValidationError('email', '電子郵件格式不正確');
+    }
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      log('驗證錯誤!');
+      log('欄位: ' + error.field);
+      log('訊息: ' + error.message);
+    }
+  }
+});
+
+// 非同步錯誤
+document.getElementById('asyncError').addEventListener('click', async () => {
+  output.textContent = '';
+  try {
+    const response = await fetch('https://httpstat.us/404');
+    if (!response.ok) {
+      throw new Error('HTTP 錯誤: ' + response.status);
+    }
+  } catch (error) {
+    log('非同步錯誤捕獲:');
+    log('訊息: ' + error.message);
+  }
+});
+
+// try/catch/finally
+document.getElementById('tryCatch').addEventListener('click', () => {
+  output.textContent = '';
+  log('=== try/catch/finally 流程 ===');
+
+  try {
+    log('1. try 區塊開始');
+    JSON.parse('{invalid json}');
+    log('這行不會執行');
+  } catch (error) {
+    log('2. catch 捕獲: ' + error.name);
+  } finally {
+    log('3. finally 一定會執行');
+  }
+
+  log('4. 程式繼續運行');
+});`}
+/>
+
+## 錯誤處理策略
+
+1. **分層處理**：底層拋出具體錯誤，上層統一處理與回報
+2. **不要吞掉錯誤**：`catch` 後至少要記錄日誌，不要空 catch
+3. **錯誤邊界**：在應用的關鍵節點設置錯誤邊界，避免整個應用崩潰
+4. **區分可恢復與不可恢復錯誤**：可恢復的提供重試機制，不可恢復的通知使用者
+5. **錯誤監控**：使用 Sentry 等工具進行線上錯誤追蹤

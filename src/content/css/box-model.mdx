@@ -1,0 +1,258 @@
+# 盒模型
+
+CSS 盒模型（Box Model）是網頁佈局的基石。每一個 HTML 元素在渲染時都被視為一個矩形盒子，由四個區域組成：content（內容）、padding（內距）、border（邊框）、margin（外距）。
+
+## 盒模型結構
+
+由內而外，一個元素的盒模型包含：
+
+```
+┌──────────────────────────────────────┐
+│              margin                  │
+│  ┌────────────────────────────────┐  │
+│  │           border               │  │
+│  │  ┌──────────────────────────┐  │  │
+│  │  │        padding           │  │  │
+│  │  │  ┌──────────────────┐   │  │  │
+│  │  │  │    content        │   │  │  │
+│  │  │  └──────────────────┘   │  │  │
+│  │  └──────────────────────────┘  │  │
+│  └────────────────────────────────┘  │
+└──────────────────────────────────────┘
+```
+
+### Content（內容區域）
+
+元素的實際內容所在區域，大小由 `width` 和 `height` 決定。
+
+### Padding（內距）
+
+內容與邊框之間的空間。背景色會延伸到 padding 區域。
+
+```css
+.box {
+  padding: 20px;              /* 四邊皆 20px */
+  padding: 10px 20px;         /* 上下 10px、左右 20px */
+  padding: 10px 20px 30px;    /* 上 10px、左右 20px、下 30px */
+  padding: 10px 20px 30px 40px; /* 上、右、下、左（順時針） */
+}
+```
+
+### Border（邊框）
+
+圍繞在 padding 外的邊框線：
+
+```css
+.box {
+  border: 2px solid #333;
+  border-radius: 8px;          /* 圓角 */
+  border-top: 3px dashed red;  /* 單邊設定 */
+}
+```
+
+### Margin（外距）
+
+元素與其他元素之間的空間。margin 是透明的，不會顯示背景色。
+
+```css
+.box {
+  margin: 20px;
+  margin: 0 auto;  /* 水平置中 */
+}
+```
+
+<Callout type="tip" title="margin 可以為負值">
+margin 允許負值，這可以讓元素重疊或向反方向移動。padding 則不接受負值。
+</Callout>
+
+## box-sizing：content-box vs border-box
+
+`box-sizing` 屬性決定了 `width` 和 `height` 的計算方式：
+
+### content-box（預設值）
+
+`width` 和 `height` 只包含 content 區域。padding 和 border 會額外增加元素的總寬高。
+
+```css
+.content-box {
+  box-sizing: content-box;
+  width: 200px;
+  padding: 20px;
+  border: 5px solid black;
+  /* 實際佔用寬度 = 200 + 20*2 + 5*2 = 250px */
+}
+```
+
+### border-box
+
+`width` 和 `height` 包含 content + padding + border。這通常更直覺好用。
+
+```css
+.border-box {
+  box-sizing: border-box;
+  width: 200px;
+  padding: 20px;
+  border: 5px solid black;
+  /* 實際佔用寬度 = 200px（content 被壓縮為 150px） */
+}
+```
+
+<Callout type="tip" title="全域設定 border-box">
+現代開發中，幾乎所有專案都會加上以下重置規則，避免計算上的困擾：
+</Callout>
+
+```css
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+```
+
+## Margin 塌陷（Margin Collapsing）
+
+當兩個垂直方向的 margin 相鄰時，它們會「塌陷」成一個 margin，取較大的值。
+
+### 塌陷發生的三種情形
+
+**1. 相鄰兄弟元素**
+
+```css
+.box-a { margin-bottom: 30px; }
+.box-b { margin-top: 20px; }
+/* 兩者之間的間距是 30px，不是 50px */
+```
+
+**2. 父元素與第一個/最後一個子元素**
+
+```css
+.parent { margin-top: 0; }
+.child { margin-top: 20px; }
+/* child 的 margin-top 會「穿透」parent */
+```
+
+**3. 空的區塊元素**
+
+一個沒有 content、padding、border 的元素，其上下 margin 會互相塌陷。
+
+### 如何避免 margin 塌陷
+
+- 使用 `padding` 取代 `margin`
+- 父元素加上 `overflow: hidden` 或 `overflow: auto`
+- 父元素加上 `border` 或 `padding`（即使只有 1px）
+- 使用 Flexbox 或 Grid 佈局（不會發生 margin 塌陷）
+- 使用 `display: flow-root` 建立新的 BFC
+
+<Callout type="warning" title="水平方向不會塌陷">
+Margin 塌陷只發生在垂直方向（block direction）。水平方向的 margin 永遠會正常疊加。同樣地，Flexbox 和 Grid 容器內的子元素也不會發生 margin 塌陷。
+</Callout>
+
+## 互動範例
+
+<CodePlayground
+  title="盒模型視覺化比較"
+  defaultHTML={`<h3>content-box vs border-box</h3>
+
+<div class="demo">
+  <div class="box content-box-demo">
+    <div class="label">content-box</div>
+    <div class="info">width: 200px</div>
+    <div class="info">padding: 20px</div>
+    <div class="info">border: 5px</div>
+    <div class="info total">實際寬度: 250px</div>
+  </div>
+
+  <div class="box border-box-demo">
+    <div class="label">border-box</div>
+    <div class="info">width: 200px</div>
+    <div class="info">padding: 20px</div>
+    <div class="info">border: 5px</div>
+    <div class="info total">實際寬度: 200px</div>
+  </div>
+</div>
+
+<h3>Margin 塌陷示範</h3>
+<div class="collapse-demo">
+  <div class="block-a">margin-bottom: 30px</div>
+  <div class="block-b">margin-top: 20px</div>
+  <p class="note">↑ 間距是 30px 而非 50px（取較大值）</p>
+</div>`}
+  defaultCSS={`.demo {
+  display: flex;
+  gap: 30px;
+  margin: 16px 0;
+}
+
+.box {
+  width: 200px;
+  padding: 20px;
+  border: 5px solid #2196F3;
+  background: #E3F2FD;
+  font-size: 14px;
+}
+
+.content-box-demo {
+  box-sizing: content-box;
+  border-color: #F44336;
+  background: #FFEBEE;
+}
+
+.border-box-demo {
+  box-sizing: border-box;
+  border-color: #4CAF50;
+  background: #E8F5E9;
+}
+
+.label {
+  font-weight: bold;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.info {
+  margin: 4px 0;
+  font-family: monospace;
+}
+
+.total {
+  font-weight: bold;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed currentColor;
+}
+
+/* Margin 塌陷示範 */
+.collapse-demo {
+  border: 2px dashed #999;
+  padding: 0 16px;
+  margin-top: 16px;
+}
+
+.block-a {
+  background: #BBDEFB;
+  padding: 16px;
+  margin-bottom: 30px;
+  text-align: center;
+}
+
+.block-b {
+  background: #C8E6C9;
+  padding: 16px;
+  margin-top: 20px;
+  text-align: center;
+}
+
+.note {
+  font-style: italic;
+  color: #666;
+  text-align: center;
+}
+
+h3 { margin: 16px 0 8px; }`}
+  defaultJS={``}
+/>
+
+## 實用技巧
+
+1. **水平置中**：使用 `margin: 0 auto` 配合固定寬度
+2. **全寬元素**：使用 `width: 100%` 搭配 `border-box`
+3. **等距排列**：在父容器使用 Flexbox + `gap`，避免 margin 塌陷問題
+4. **偵錯技巧**：使用瀏覽器 DevTools 的「盒模型」面板可視化檢查每一層的大小
