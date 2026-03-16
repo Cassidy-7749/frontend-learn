@@ -1,12 +1,12 @@
 # 📚 前端知識複習
 
-一個文件式的前端知識複習網站，涵蓋 HTML、CSS、JavaScript 核心三件套的完整知識體系，並內嵌互動式程式碼編輯器，讓你邊學邊練。
+一個文件式的前端知識複習網站，涵蓋 HTML、CSS、JavaScript、Git、React、TypeScript 六大類別的完整知識體系，並內嵌互動式程式碼編輯器，讓你邊學邊練。
 
 🔗 **線上預覽**：https://cassidy-7749.github.io/frontend-learn/
 
 ## 功能特色
 
-- **35 篇完整文章** — HTML (6)、CSS (11)、JavaScript (18)
+- **69 篇完整文章** — HTML (6)、CSS (11)、JavaScript (18)、Git (8)、React (14)、TypeScript (12)
 - **互動式 CodePlayground** — 內嵌 CodeMirror 6 編輯器 + iframe 沙箱即時預覽
 - **Console 面板** — 攔截 iframe 內的 console 輸出，方便除錯
 - **學習進度追蹤** — localStorage 持久化，側邊欄 / 首頁顯示完成進度
@@ -71,6 +71,46 @@
 16. 記憶體管理與垃圾回收
 17. 效能優化
 18. 常見面試題
+
+### Git（8 篇）
+1. Git 基礎觀念與工作流程
+2. 分支管理
+3. 合併策略：Merge 與 Rebase
+4. 衝突解決
+5. 遠端協作與 Pull Request
+6. Git 工作流程模型
+7. 復原與修正操作
+8. 進階技巧
+
+### React（14 篇）
+1. JSX 與渲染機制
+2. 元件與 Props
+3. State 與生命週期
+4. 事件處理
+5. useEffect 與副作用
+6. useRef 與 DOM 操作
+7. 進階 Hooks
+8. Context 與狀態管理
+9. 表單處理
+10. 效能優化
+11. Suspense 與 Transitions
+12. Server Components
+13. 常見元件模式
+14. 測試策略
+
+### TypeScript（12 篇）
+1. 基礎型別與型別註記
+2. Interface 與 Type Alias
+3. 聯合型別與交叉型別
+4. 函式型別
+5. 泛型
+6. 內建工具型別
+7. 型別收窄與守衛
+8. 進階型別操作
+9. infer 與型別推導
+10. TypeScript 與 React 實戰
+11. 模組與型別宣告
+12. tsconfig 與最佳實踐
 
 ## 本地開發
 
