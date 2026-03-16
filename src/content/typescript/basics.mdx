@@ -1,0 +1,446 @@
+# 基礎型別與型別註記
+
+TypeScript 是 JavaScript 的超集（superset），在 JavaScript 的基礎上加入了靜態型別系統。透過型別檢查，我們可以在編譯期就捕捉到許多常見錯誤，大幅提升程式碼的可靠性與可維護性。本篇將帶你認識 TypeScript 的基礎型別系統與型別註記方式。
+
+## TypeScript 是什麼？
+
+TypeScript 由 Microsoft 開發並維護，它是 JavaScript 的超集——這意味著任何合法的 JavaScript 程式碼，同時也是合法的 TypeScript 程式碼。TypeScript 在編譯（transpile）後會產生純 JavaScript，可以在任何支援 JavaScript 的環境中執行。
+
+```ts
+// 這是合法的 JavaScript，同時也是合法的 TypeScript
+const message = "Hello, TypeScript!";
+console.log(message);
+
+// 但 TypeScript 可以加上型別標註
+const greeting: string = "Hello, TypeScript!";
+const year: number = 2025;
+```
+
+TypeScript 的核心價值在於：
+
+- **編譯期型別檢查**：在程式碼執行之前就發現型別錯誤
+- **更好的開發體驗**：IDE 自動補全、重構支援、跳轉定義
+- **程式碼即文件**：型別標註本身就是最好的 API 說明
+- **漸進式採用**：可以逐步將 JavaScript 專案遷移到 TypeScript
+
+<Callout type="info" title="TypeScript 只在編譯期存在">
+TypeScript 的型別資訊只存在於編譯期（compile time），在編譯為 JavaScript 之後所有型別標註都會被移除。這代表 TypeScript 不會影響執行期（runtime）的效能，但也意味著你無法在 runtime 使用 TypeScript 的型別做判斷。
+</Callout>
+
+## 原始型別（Primitive Types）
+
+TypeScript 中的原始型別與 JavaScript 的七種原始型別一一對應：
+
+```ts
+// string — 字串
+const name: string = "前端學習";
+
+// number — 數字（整數與浮點數皆同）
+const age: number = 25;
+const pi: number = 3.14;
+
+// boolean — 布林值
+const isActive: boolean = true;
+
+// null 與 undefined
+const empty: null = null;
+let notAssigned: undefined = undefined;
+
+// symbol — 唯一識別符
+const id: symbol = Symbol("id");
+
+// bigint — 大整數
+const bigNum: bigint = 9007199254740991n;
+```
+
+注意 TypeScript 中的型別名稱全部都是**小寫**的 `string`、`number`、`boolean` 等，而不是大寫的 `String`、`Number`、`Boolean`。大寫版本是 JavaScript 的包裝物件型別（wrapper object），在 TypeScript 中幾乎不應該使用。
+
+```ts
+// 正確 ✅
+const name: string = "Alice";
+
+// 錯誤 ❌ — 不要使用包裝物件型別
+const name: String = "Alice";
+```
+
+## 陣列型別
+
+TypeScript 提供兩種語法來定義陣列型別：
+
+```ts
+// 語法一：T[] 形式（推薦，較簡潔）
+const numbers: number[] = [1, 2, 3, 4, 5];
+const names: string[] = ["Alice", "Bob", "Charlie"];
+
+// 語法二：Array<T> 泛型形式
+const scores: Array<number> = [85, 92, 78];
+const flags: Array<boolean> = [true, false, true];
+
+// 多維陣列
+const matrix: number[][] = [
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9]
+];
+
+// 唯讀陣列
+const readonlyArr: readonly number[] = [1, 2, 3];
+// readonlyArr.push(4); // 編譯錯誤！不可修改
+```
+
+兩種語法在功能上完全等價，選擇哪一種主要取決於團隊風格。`T[]` 形式較為簡潔，是較多專案使用的慣例。
+
+## 元組（Tuple）
+
+元組是 TypeScript 特有的型別，它代表一個**固定長度**且**每個位置有特定型別**的陣列：
+
+```ts
+// 定義一個包含 [string, number] 的元組
+const person: [string, number] = ["Alice", 30];
+
+// 存取元素時，TypeScript 知道每個位置的型別
+const name = person[0]; // string
+const age = person[1];  // number
+
+// 可選元素
+const point: [number, number, number?] = [10, 20];
+
+// 具名元組（Named Tuple，提升可讀性）
+type UserRecord = [name: string, age: number, email: string];
+const user: UserRecord = ["Bob", 25, "bob@example.com"];
+
+// 搭配解構使用
+const [userName, userAge, userEmail] = user;
+```
+
+<Callout type="tip" title="元組的常見應用場景">
+元組最常見的用途是函式回傳多個值的情況，例如 React 的 `useState` Hook 回傳的 `[state, setState]` 就是一個元組型別 `[S, Dispatch<SetStateAction<S>>]`。
+</Callout>
+
+## 列舉（Enum）
+
+列舉用於定義一組具名常數，TypeScript 支援數字列舉與字串列舉：
+
+```ts
+// 數字列舉（預設從 0 開始遞增）
+enum Direction {
+  Up,    // 0
+  Down,  // 1
+  Left,  // 2
+  Right  // 3
+}
+
+// 指定起始值
+enum StatusCode {
+  OK = 200,
+  NotFound = 404,
+  InternalError = 500
+}
+
+// 字串列舉
+enum Color {
+  Red = "RED",
+  Green = "GREEN",
+  Blue = "BLUE"
+}
+
+// 使用列舉
+const dir: Direction = Direction.Up;
+const status: StatusCode = StatusCode.OK;
+
+// 數字列舉支援反向對映
+console.log(Direction[0]); // "Up"
+console.log(Direction.Up); // 0
+```
+
+### const enum
+
+`const enum` 在編譯時會被完全內聯（inline），不會產生額外的 JavaScript 物件：
+
+```ts
+const enum Fruit {
+  Apple,
+  Banana,
+  Cherry
+}
+
+const myFruit = Fruit.Apple;
+// 編譯後只剩：const myFruit = 0;
+
+// 一般 enum 編譯後會產生雙向對映的物件
+// const enum 編譯後完全消失，只留下值
+```
+
+在效能敏感的場景中，`const enum` 可以減少產生的 JavaScript 程式碼量。但要注意 `const enum` 在跨模組使用時有一些限制。
+
+## any、unknown、never 與 void
+
+這四個特殊型別在 TypeScript 中扮演不同角色：
+
+### any — 放棄型別檢查
+
+```ts
+// any 可以賦值為任何型別，也可以賦值給任何型別
+let anything: any = 42;
+anything = "hello";
+anything = true;
+anything.someMethod(); // 不會報錯，但 runtime 可能出錯
+
+// any 本質上是關閉了 TypeScript 的型別檢查
+```
+
+### unknown — 安全的 any
+
+```ts
+// unknown 可以接收任何值，但不能直接使用
+let value: unknown = 42;
+value = "hello";
+
+// 需要透過型別收窄才能使用
+if (typeof value === "string") {
+  console.log(value.toUpperCase()); // 此時 TypeScript 知道是 string
+}
+
+// 不做型別收窄會報錯
+// value.toUpperCase(); // 編譯錯誤！
+```
+
+### never — 永不發生
+
+```ts
+// never 代表永遠不會有回傳值
+function throwError(message: string): never {
+  throw new Error(message);
+}
+
+// 無限迴圈也是 never
+function infiniteLoop(): never {
+  while (true) {}
+}
+
+// never 常用於 exhaustive checking
+type Shape = "circle" | "square";
+function getArea(shape: Shape) {
+  switch (shape) {
+    case "circle":
+      return Math.PI * 10 * 10;
+    case "square":
+      return 10 * 10;
+    default:
+      const _exhaustive: never = shape;
+      return _exhaustive;
+  }
+}
+```
+
+### void — 沒有回傳值
+
+```ts
+// void 表示函式沒有回傳值
+function logMessage(msg: string): void {
+  console.log(msg);
+  // 沒有 return 語句，或是 return;（不帶值）
+}
+
+// void 和 undefined 不同
+// void 型別的函式可以 return undefined，但不建議 return 其他值
+```
+
+<Callout type="warning" title="避免濫用 any">
+`any` 會使 TypeScript 失去型別檢查的能力，應盡量避免使用。當你不確定型別時，優先使用 `unknown` 來保持型別安全。如果需要暫時跳過型別檢查，可以加上 `// @ts-ignore` 或 `// @ts-expect-error` 註解，但這只應作為臨時方案。
+</Callout>
+
+## 型別註記（Type Annotation）vs 型別推論（Type Inference）
+
+TypeScript 具備強大的型別推論能力，在許多情況下不需要明確標註型別：
+
+```ts
+// 明確型別註記（Type Annotation）
+const name: string = "Alice";
+const age: number = 30;
+const isActive: boolean = true;
+
+// 型別推論（Type Inference）— TypeScript 自動推斷型別
+const name = "Alice";      // 推論為 string（更精確地說是 "Alice" 字面量型別）
+const age = 30;            // 推論為 number（更精確地說是 30 字面量型別）
+const isActive = true;     // 推論為 true 字面量型別
+
+// let 宣告的推論會寬鬆一些
+let name = "Alice";        // 推論為 string（不是字面量型別）
+let age = 30;              // 推論為 number
+
+// 函式回傳值也能推論
+function add(a: number, b: number) {
+  return a + b; // TypeScript 推論回傳型別為 number
+}
+
+// 物件與陣列的推論
+const person = {
+  name: "Alice",
+  age: 30
+}; // 推論為 { name: string; age: number }
+
+const numbers = [1, 2, 3]; // 推論為 number[]
+```
+
+### 何時需要明確標註型別？
+
+- **函式的參數**：必須標註（大多數情況下無法推論）
+- **空陣列或空物件**：TypeScript 會推論為 `any[]` 或 `{}`
+- **函式回傳值**：公開的 API 或複雜函式建議標註
+- **型別不明確時**：例如解析 JSON 的結果
+
+```ts
+// 空陣列需要標註
+const items: string[] = [];
+
+// 函式參數需要標註
+function greet(name: string): string {
+  return `Hello, ${name}!`;
+}
+
+// JSON 解析需要標註
+const data: { name: string; age: number } = JSON.parse(jsonString);
+```
+
+## 型別斷言（Type Assertion）
+
+型別斷言告訴 TypeScript 編譯器「相信我，我知道這個值的型別」：
+
+```ts
+// as 語法（推薦）
+const input = document.getElementById("myInput") as HTMLInputElement;
+input.value = "Hello";
+
+// 角括號語法（在 JSX/TSX 中不能使用）
+const input2 = <HTMLInputElement>document.getElementById("myInput");
+
+// 雙重斷言（escape hatch，盡量避免）
+const value = "hello" as unknown as number; // 強制將 string 當作 number
+
+// const 斷言 — 讓值成為最窄的字面量型別
+const colors = ["red", "green", "blue"] as const;
+// 型別為 readonly ["red", "green", "blue"]
+
+const config = {
+  url: "https://api.example.com",
+  method: "GET"
+} as const;
+// method 的型別為 "GET" 而非 string
+```
+
+型別斷言不會在 runtime 做任何型別轉換，它只是告訴編譯器按照你指定的型別來處理。如果斷言了錯誤的型別，仍然可能在 runtime 出錯。
+
+## 嚴格模式（Strict Mode）
+
+TypeScript 的 `tsconfig.json` 中有一個 `strict` 選項，開啟後會啟用一系列嚴格的型別檢查規則：
+
+```ts
+// tsconfig.json
+// { "compilerOptions": { "strict": true } }
+
+// strict: true 等同於開啟以下所有選項：
+// - strictNullChecks：null 和 undefined 不能賦值給其他型別
+// - strictFunctionTypes：函式型別參數的嚴格檢查
+// - strictBindCallApply：嚴格檢查 bind/call/apply
+// - strictPropertyInitialization：類別屬性必須初始化
+// - noImplicitAny：禁止隱含的 any 型別
+// - noImplicitThis：禁止隱含的 any 型別的 this
+// - alwaysStrict：在所有檔案加上 "use strict"
+// - useUnknownInCatchVariables：catch 參數預設為 unknown
+```
+
+### strictNullChecks 的影響
+
+```ts
+// strictNullChecks 關閉時：
+let name: string = "Alice";
+name = null;      // 不報錯
+name = undefined; // 不報錯
+
+// strictNullChecks 開啟時（推薦）：
+let name: string = "Alice";
+// name = null;      // 編譯錯誤！
+// name = undefined; // 編譯錯誤！
+
+// 需要明確標註可能為 null 的情況
+let name: string | null = "Alice";
+name = null; // OK
+
+// 使用前需要做 null 檢查
+function getLength(str: string | null): number {
+  if (str === null) {
+    return 0;
+  }
+  return str.length; // TypeScript 知道此處 str 一定是 string
+}
+```
+
+<CodePlayground
+  title="TypeScript 基礎型別在 Runtime 的行為"
+  defaultJS={`// TypeScript 的型別在編譯後會被移除
+// 以下展示各型別在 JavaScript runtime 中的行為
+
+// 原始型別的 typeof 檢測
+console.log("typeof 'hello':", typeof "hello");       // "string"
+console.log("typeof 42:", typeof 42);                 // "number"
+console.log("typeof true:", typeof true);             // "boolean"
+console.log("typeof undefined:", typeof undefined);   // "undefined"
+console.log("typeof null:", typeof null);             // "object" (歷史 bug)
+console.log("typeof Symbol():", typeof Symbol());     // "symbol"
+console.log("typeof 42n:", typeof 42n);               // "bigint"
+
+console.log("--- 元組在 runtime 就是陣列 ---");
+const tuple = ["Alice", 30];
+console.log("Array.isArray(tuple):", Array.isArray(tuple)); // true
+console.log("tuple[0]:", tuple[0], "| tuple[1]:", tuple[1]);
+
+console.log("--- Enum 編譯後是雙向對映物件 ---");
+// TypeScript enum 編譯後的結果模擬
+const Direction = {};
+Direction[Direction["Up"] = 0] = "Up";
+Direction[Direction["Down"] = 1] = "Down";
+Direction[Direction["Left"] = 2] = "Left";
+Direction[Direction["Right"] = 3] = "Right";
+console.log("Direction.Up:", Direction.Up);      // 0
+console.log("Direction[0]:", Direction[0]);       // "Up"
+console.log("Direction object:", JSON.stringify(Direction));
+
+console.log("--- 型別收窄示範 ---");
+function processValue(value) {
+  // 模擬 unknown 型別的安全處理
+  if (typeof value === "string") {
+    console.log("字串長度:", value.length);
+  } else if (typeof value === "number") {
+    console.log("數字平方:", value * value);
+  } else {
+    console.log("其他型別:", typeof value);
+  }
+}
+processValue("Hello TypeScript");
+processValue(7);
+processValue(true);
+`}
+/>
+
+## 面試重點整理
+
+1. **TypeScript 與 JavaScript 的關係**：TypeScript 是 JavaScript 的超集，所有 JavaScript 程式碼都是合法的 TypeScript 程式碼。TypeScript 編譯後產生純 JavaScript。
+
+2. **any vs unknown**：`any` 放棄型別檢查，可以做任何操作；`unknown` 也能接收任何值，但在使用前必須進行型別收窄，更加安全。
+
+3. **never 的用途**：表示永遠不會發生的情況，常用於 exhaustive checking（窮盡檢查）。
+
+4. **型別註記 vs 型別推論**：TypeScript 有強大的型別推論能力，在可以推論的場景下不需要明確標註；但函式參數、空陣列、公開 API 等情境建議明確標註。
+
+5. **型別斷言**：使用 `as` 語法告訴編譯器特定的型別資訊，不會在 runtime 做任何轉換。`as const` 可以讓值成為最窄的字面量型別。
+
+6. **嚴格模式**：新專案建議一律開啟 `strict: true`，其中 `strictNullChecks` 是最重要的選項，可以避免大量 null/undefined 相關的錯誤。
+
+7. **Tuple vs Array**：元組有固定長度且每個位置有特定型別，陣列的每個元素型別相同且長度可變。在 runtime 中元組就是普通陣列。
+
+8. **enum vs const enum**：一般 enum 會產生雙向對映的 JavaScript 物件；`const enum` 在編譯時被內聯，不產生額外程式碼。
+
+---
+
+下一篇我們將深入探討 **Interface 與 Type Alias**，學習如何定義複雜的物件型別結構以及兩者之間的差異與最佳使用時機。

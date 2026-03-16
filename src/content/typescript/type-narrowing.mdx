@@ -1,0 +1,621 @@
+# 型別收窄與守衛
+
+TypeScript 的型別收窄（Type Narrowing）是編譯器根據程式碼的控制流，在特定分支中自動推斷出更精確型別的能力。這讓我們能夠安全地操作聯合型別，而不需要大量的型別斷言。
+
+## typeof 收窄
+
+`typeof` 是最基本的收窄方式，適用於原始型別：
+
+```ts
+function processValue(value: string | number | boolean) {
+  if (typeof value === 'string') {
+    // 這裡 value 被收窄為 string
+    console.log(value.toUpperCase());
+    console.log(value.split(''));
+  } else if (typeof value === 'number') {
+    // 這裡 value 被收窄為 number
+    console.log(value.toFixed(2));
+    console.log(Math.round(value));
+  } else {
+    // 這裡 value 被收窄為 boolean
+    console.log(value ? '是' : '否');
+  }
+}
+
+// typeof 可辨識的型別
+function checkType(x: unknown) {
+  if (typeof x === 'string')    { /* x: string */ }
+  if (typeof x === 'number')    { /* x: number */ }
+  if (typeof x === 'boolean')   { /* x: boolean */ }
+  if (typeof x === 'bigint')    { /* x: bigint */ }
+  if (typeof x === 'symbol')    { /* x: symbol */ }
+  if (typeof x === 'undefined') { /* x: undefined */ }
+  if (typeof x === 'function')  { /* x: Function */ }
+  if (typeof x === 'object')    { /* x: object | null */ }
+}
+```
+
+<Callout type="warning" title="typeof 的限制">
+`typeof null` 回傳 `"object"`，所以 `typeof x === 'object'` 檢查後，`x` 可能是 `null`。需要額外的 `x !== null` 檢查。此外，`typeof` 無法區分陣列、日期等物件子型別。
+</Callout>
+
+## instanceof 收窄
+
+`instanceof` 用於檢查物件是否為某個類別的實例：
+
+```ts
+class Dog {
+  bark() { return '汪汪！'; }
+  fetch(item: string) { return `撿回了 ${item}`; }
+}
+
+class Cat {
+  meow() { return '喵喵！'; }
+  scratch() { return '抓抓！'; }
+}
+
+function interact(animal: Dog | Cat) {
+  if (animal instanceof Dog) {
+    // animal 被收窄為 Dog
+    console.log(animal.bark());
+    console.log(animal.fetch('球'));
+  } else {
+    // animal 被收窄為 Cat
+    console.log(animal.meow());
+    console.log(animal.scratch());
+  }
+}
+
+// 也適用於內建類別
+function formatDate(value: string | Date) {
+  if (value instanceof Date) {
+    return value.toLocaleDateString('zh-TW');
+  }
+  return new Date(value).toLocaleDateString('zh-TW');
+}
+
+// 錯誤處理中的 instanceof
+function handleError(error: unknown) {
+  if (error instanceof TypeError) {
+    console.log('型別錯誤:', error.message);
+  } else if (error instanceof RangeError) {
+    console.log('範圍錯誤:', error.message);
+  } else if (error instanceof Error) {
+    console.log('一般錯誤:', error.message);
+  } else {
+    console.log('未知錯誤:', String(error));
+  }
+}
+```
+
+## in 運算子收窄
+
+`in` 運算子檢查物件是否包含特定屬性，適合用在介面聯合型別：
+
+```ts
+interface Fish {
+  swim: () => void;
+  scales: boolean;
+}
+
+interface Bird {
+  fly: () => void;
+  feathers: boolean;
+}
+
+function move(animal: Fish | Bird) {
+  if ('swim' in animal) {
+    // animal 被收窄為 Fish
+    animal.swim();
+    console.log('有鱗片:', animal.scales);
+  } else {
+    // animal 被收窄為 Bird
+    animal.fly();
+    console.log('有羽毛:', animal.feathers);
+  }
+}
+
+// 更複雜的情境
+interface AdminUser {
+  role: 'admin';
+  permissions: string[];
+  manageUsers: () => void;
+}
+
+interface RegularUser {
+  role: 'user';
+  preferences: Record<string, string>;
+}
+
+interface GuestUser {
+  role: 'guest';
+}
+
+type AppUser = AdminUser | RegularUser | GuestUser;
+
+function showDashboard(user: AppUser) {
+  if ('permissions' in user) {
+    // AdminUser
+    console.log('管理員權限:', user.permissions);
+    user.manageUsers();
+  } else if ('preferences' in user) {
+    // RegularUser
+    console.log('使用者偏好:', user.preferences);
+  } else {
+    // GuestUser
+    console.log('訪客模式');
+  }
+}
+```
+
+## 等值收窄（=== / !==）
+
+使用嚴格等值比較來收窄型別，特別適合字面量型別和 `null` 檢查：
+
+```ts
+// null 檢查
+function greet(name: string | null) {
+  if (name === null) {
+    console.log('你好，匿名使用者');
+  } else {
+    // name 被收窄為 string
+    console.log(`你好，${name.toUpperCase()}`);
+  }
+}
+
+// 字面量型別收窄
+type Direction = 'north' | 'south' | 'east' | 'west';
+
+function navigate(direction: Direction) {
+  if (direction === 'north') {
+    console.log('向北移動');
+  } else if (direction === 'south') {
+    console.log('向南移動');
+  }
+  // direction 在這裡是 'east' | 'west'
+}
+
+// 共同值比較
+function compare(a: string | number, b: string | number) {
+  if (a === b) {
+    // 若 a === b，兩者必定是相同型別
+    // TypeScript 收窄為 string | number（交集）
+    console.log('相等:', a);
+  }
+}
+
+// != null 同時排除 null 和 undefined
+function process(value: string | null | undefined) {
+  if (value != null) {
+    // value 被收窄為 string
+    console.log(value.length);
+  }
+}
+```
+
+## Truthiness 收窄
+
+利用 JavaScript 的真假值特性進行收窄：
+
+```ts
+function printLength(str: string | null | undefined) {
+  if (str) {
+    // str 被收窄為 string（排除 null、undefined 和空字串）
+    console.log(str.length);
+  }
+}
+
+// 注意：truthiness 收窄會排除所有 falsy 值
+function processNumber(num: number | null) {
+  if (num) {
+    // num 被收窄為 number
+    // 但注意：0 也是 falsy！這個分支會跳過 0
+    console.log(num * 2);
+  }
+}
+
+// 更安全的做法
+function processNumberSafe(num: number | null) {
+  if (num !== null) {
+    // 正確收窄為 number，包含 0
+    console.log(num * 2);
+  }
+}
+
+// 搭配邏輯運算子
+function formatName(
+  firstName: string | null,
+  lastName: string | null
+): string {
+  const first = firstName ?? '未知';
+  const last = lastName ?? '';
+  return `${first} ${last}`.trim();
+}
+```
+
+## 自訂型別守衛（is 關鍵字）
+
+當內建的收窄方式不夠用時，可以自訂型別守衛函式：
+
+```ts
+// 基本型別守衛
+interface Circle {
+  kind: 'circle';
+  radius: number;
+}
+
+interface Square {
+  kind: 'square';
+  sideLength: number;
+}
+
+type Shape = Circle | Square;
+
+function isCircle(shape: Shape): shape is Circle {
+  return shape.kind === 'circle';
+}
+
+function getArea(shape: Shape): number {
+  if (isCircle(shape)) {
+    // shape 被收窄為 Circle
+    return Math.PI * shape.radius ** 2;
+  } else {
+    // shape 被收窄為 Square
+    return shape.sideLength ** 2;
+  }
+}
+
+// 驗證未知資料
+function isUser(data: unknown): data is User {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'id' in data &&
+    'name' in data &&
+    typeof (data as any).id === 'number' &&
+    typeof (data as any).name === 'string'
+  );
+}
+
+interface User {
+  id: number;
+  name: string;
+}
+
+function processApiData(data: unknown) {
+  if (isUser(data)) {
+    // data 被收窄為 User
+    console.log(`使用者 ${data.name}，ID: ${data.id}`);
+  } else {
+    console.log('無效的使用者資料');
+  }
+}
+
+// 陣列過濾搭配型別守衛
+const mixed: (string | number | null)[] = ['hello', 42, null, 'world', 7];
+
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+const strings: string[] = mixed.filter(isString);
+// ['hello', 'world']
+```
+
+<Callout type="info" title="型別守衛的責任">
+型別守衛函式中的檢查邏輯由開發者負責正確實作。TypeScript 信任你的 `is` 斷言，不會驗證函式內部的邏輯是否真的對應宣告的型別。若守衛邏輯有誤，可能導致執行期錯誤。
+</Callout>
+
+## Discriminated Unions 收窄
+
+使用共同的字面量屬性（discriminant）來區分聯合型別的成員，這是 TypeScript 中最常見且最強大的模式之一：
+
+```ts
+// 定義帶有 discriminant 的聯合型別
+interface LoadingState {
+  status: 'loading';
+}
+
+interface SuccessState {
+  status: 'success';
+  data: string[];
+}
+
+interface ErrorState {
+  status: 'error';
+  message: string;
+  code: number;
+}
+
+type RequestState = LoadingState | SuccessState | ErrorState;
+
+function renderState(state: RequestState): string {
+  switch (state.status) {
+    case 'loading':
+      return '載入中...';
+    case 'success':
+      // state 被收窄為 SuccessState
+      return `取得 ${state.data.length} 筆資料`;
+    case 'error':
+      // state 被收窄為 ErrorState
+      return `錯誤 ${state.code}: ${state.message}`;
+  }
+}
+
+// React 中的常見模式
+type Action =
+  | { type: 'SET_USER'; payload: User }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_ERROR'; payload: string }
+  | { type: 'CLEAR' };
+
+function reducer(state: any, action: Action) {
+  switch (action.type) {
+    case 'SET_USER':
+      return { ...state, user: action.payload }; // payload: User
+    case 'SET_LOADING':
+      return { ...state, loading: action.payload }; // payload: boolean
+    case 'SET_ERROR':
+      return { ...state, error: action.payload }; // payload: string
+    case 'CLEAR':
+      return {}; // 沒有 payload
+  }
+}
+```
+
+## Assertion Functions（asserts）
+
+斷言函式在條件不滿足時拋出錯誤，讓後續程式碼自動獲得收窄後的型別：
+
+```ts
+// 基本斷言函式
+function assertIsString(value: unknown): asserts value is string {
+  if (typeof value !== 'string') {
+    throw new Error(`預期 string，收到 ${typeof value}`);
+  }
+}
+
+function processInput(input: unknown) {
+  assertIsString(input);
+  // input 被收窄為 string
+  console.log(input.toUpperCase());
+}
+
+// 非 null 斷言
+function assertDefined<T>(
+  value: T | null | undefined,
+  name: string
+): asserts value is T {
+  if (value === null || value === undefined) {
+    throw new Error(`${name} 不能為 null 或 undefined`);
+  }
+}
+
+function getUser(id: number): User | null {
+  // 模擬查詢
+  return id === 1 ? { id: 1, name: 'Alice' } : null;
+}
+
+const user = getUser(1);
+assertDefined(user, 'user');
+// user 被收窄為 User
+console.log(user.name);
+
+// 條件斷言
+function assert(condition: boolean, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function divide(a: number, b: number): number {
+  assert(b !== 0, '除數不能為零');
+  return a / b; // TypeScript 知道 b 不是 0
+}
+```
+
+## 控制流分析（Control Flow Analysis）
+
+TypeScript 的控制流分析會追蹤變數在每個分支中的型別變化：
+
+```ts
+function example(x: string | number | null) {
+  // x: string | number | null
+
+  if (x === null) {
+    return; // 提前返回
+  }
+  // x: string | number（null 被排除）
+
+  if (typeof x === 'string') {
+    x.toUpperCase(); // x: string
+    return;
+  }
+  // x: number（string 也被排除）
+  x.toFixed(2);
+}
+
+// 賦值也會觸發收窄
+function reassignment() {
+  let value: string | number;
+  value = 'hello';
+  // value: string
+  console.log(value.toUpperCase());
+
+  value = 42;
+  // value: number
+  console.log(value.toFixed(2));
+}
+
+// 閉包中的注意事項
+function closurePitfall() {
+  let value: string | number = 'hello';
+
+  if (typeof value === 'string') {
+    setTimeout(() => {
+      // TypeScript 可能無法在閉包中保持收窄
+      // 因為 value 可能在 setTimeout 執行前被重新賦值
+      console.log(value);
+    }, 1000);
+  }
+
+  value = 42; // 重新賦值
+}
+```
+
+## never 與窮舉檢查
+
+`never` 型別表示永遠不會發生的值。利用它可以確保 switch/if 涵蓋了所有情況：
+
+```ts
+type Shape =
+  | { kind: 'circle'; radius: number }
+  | { kind: 'square'; side: number }
+  | { kind: 'triangle'; base: number; height: number };
+
+function getArea(shape: Shape): number {
+  switch (shape.kind) {
+    case 'circle':
+      return Math.PI * shape.radius ** 2;
+    case 'square':
+      return shape.side ** 2;
+    case 'triangle':
+      return (shape.base * shape.height) / 2;
+    default: {
+      // 如果上面涵蓋了所有情況，shape 的型別就是 never
+      const _exhaustive: never = shape;
+      return _exhaustive;
+    }
+  }
+}
+
+// 若新增一個 kind 但忘了處理，編譯器會報錯
+type ExtendedShape = Shape | { kind: 'rectangle'; width: number; height: number };
+
+function getAreaV2(shape: ExtendedShape): number {
+  switch (shape.kind) {
+    case 'circle':
+      return Math.PI * shape.radius ** 2;
+    case 'square':
+      return shape.side ** 2;
+    case 'triangle':
+      return (shape.base * shape.height) / 2;
+    // 如果沒有 'rectangle' case，下面會報錯
+    case 'rectangle':
+      return shape.width * shape.height;
+    default: {
+      const _exhaustive: never = shape;
+      return _exhaustive;
+    }
+  }
+}
+
+// 封裝成工具函式
+function assertNever(value: never, message?: string): never {
+  throw new Error(message ?? `未處理的情況: ${JSON.stringify(value)}`);
+}
+```
+
+<CodePlayground
+  title="各種收窄技巧的 JS Runtime 行為"
+  defaultJS={`// === typeof 收窄 ===
+function processValue(value) {
+  if (typeof value === 'string') {
+    console.log('字串:', value.toUpperCase());
+  } else if (typeof value === 'number') {
+    console.log('數字:', value.toFixed(2));
+  } else if (typeof value === 'boolean') {
+    console.log('布林:', value ? '真' : '假');
+  }
+}
+processValue('hello');
+processValue(3.14159);
+processValue(true);
+console.log('---');
+
+// === instanceof 收窄 ===
+class ApiError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+    this.name = 'ApiError';
+  }
+}
+
+function handleError(error) {
+  if (error instanceof ApiError) {
+    console.log('API 錯誤 ' + error.code + ':', error.message);
+  } else if (error instanceof Error) {
+    console.log('一般錯誤:', error.message);
+  } else {
+    console.log('未知錯誤:', String(error));
+  }
+}
+handleError(new ApiError('找不到資源', 404));
+handleError(new Error('網路異常'));
+handleError('字串錯誤');
+console.log('---');
+
+// === in 運算子 ===
+function describeAnimal(animal) {
+  if ('swim' in animal) {
+    console.log(animal.name + ' 會游泳');
+  }
+  if ('fly' in animal) {
+    console.log(animal.name + ' 會飛');
+  }
+}
+describeAnimal({ name: '鮭魚', swim: true });
+describeAnimal({ name: '老鷹', fly: true });
+console.log('---');
+
+// === Discriminated Unions 模式 ===
+function renderState(state) {
+  switch (state.status) {
+    case 'loading':
+      return '載入中...';
+    case 'success':
+      return '成功：取得 ' + state.data.length + ' 筆資料';
+    case 'error':
+      return '錯誤 ' + state.code + ': ' + state.message;
+  }
+}
+console.log(renderState({ status: 'loading' }));
+console.log(renderState({ status: 'success', data: ['a', 'b', 'c'] }));
+console.log(renderState({ status: 'error', code: 500, message: '伺服器錯誤' }));
+console.log('---');
+
+// === 窮舉檢查 ===
+function getArea(shape) {
+  switch (shape.kind) {
+    case 'circle':
+      return (Math.PI * shape.radius ** 2).toFixed(2);
+    case 'square':
+      return (shape.side ** 2).toFixed(2);
+    default:
+      throw new Error('未處理的形狀: ' + shape.kind);
+  }
+}
+console.log('圓形面積:', getArea({ kind: 'circle', radius: 5 }));
+console.log('正方形面積:', getArea({ kind: 'square', side: 4 }));
+try {
+  getArea({ kind: 'triangle', base: 3, height: 4 });
+} catch (e) {
+  console.log('窮舉檢查:', e.message);
+}`}
+/>
+
+<Callout type="tip" title="收窄技巧選擇指南">
+原始型別用 `typeof`，類別實例用 `instanceof`，介面/物件用 `in` 或 discriminated unions，需要自訂邏輯用型別守衛（`is`），需要拋錯則用斷言函式（`asserts`）。大多數情況下，discriminated unions 是最推薦的模式。
+</Callout>
+
+## 面試重點整理
+
+1. **型別收窄是什麼？** TypeScript 根據控制流分析，在特定分支中自動推斷出更精確的型別
+2. **typeof 的限制** 無法區分陣列、物件、null 等，`typeof null === 'object'` 是常見陷阱
+3. **Discriminated Unions** 使用共同的字面量屬性作為判別標籤，是最強大且最常見的收窄模式
+4. **型別守衛 vs 斷言函式** `is` 回傳布林值用於條件判斷，`asserts` 在不滿足時拋錯用於前置檢查
+5. **never 與窮舉檢查** 利用 `never` 確保所有分支都被處理，新增型別成員時自動獲得編譯錯誤
+6. **控制流分析** TypeScript 追蹤變數在每個分支的型別，提前返回、賦值都會影響後續的型別推斷
+
+下一篇我們將探討進階型別操作，包括 Mapped Types、Conditional Types 和 Template Literal Types 等強大的型別級程式設計工具。

@@ -1,0 +1,717 @@
+# 進階 Hooks
+
+掌握了 `useState`、`useEffect`、`useRef` 等基礎 Hook 之後，React 還提供了一系列進階 Hook 來應對更複雜的場景。本篇將深入探討 `useReducer`、`useCallback`、`useMemo` 等進階 Hook，以及如何建立可重用的自訂 Hook。
+
+## useReducer — 複雜狀態邏輯
+
+當狀態邏輯變得複雜——涉及多個相關的值、需要根據不同動作進行不同更新——`useReducer` 比 `useState` 更適合。
+
+```jsx
+import { useReducer } from 'react';
+
+const initialState = { count: 0, step: 1 };
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'increment':
+      return { ...state, count: state.count + state.step };
+    case 'decrement':
+      return { ...state, count: state.count - state.step };
+    case 'setStep':
+      return { ...state, step: action.payload };
+    case 'reset':
+      return initialState;
+    default:
+      throw new Error(`未知的 action: ${action.type}`);
+  }
+}
+
+function Counter() {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  return (
+    <div>
+      <p>計數：{state.count}（步長：{state.step}）</p>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
+      <button onClick={() => dispatch({ type: 'reset' })}>重置</button>
+      <input
+        type="number"
+        value={state.step}
+        onChange={e => dispatch({ type: 'setStep', payload: Number(e.target.value) })}
+      />
+    </div>
+  );
+}
+```
+
+### useReducer vs useState
+
+| 面向 | useState | useReducer |
+|------|----------|------------|
+| 適用場景 | 簡單、獨立的狀態 | 複雜、相關聯的狀態 |
+| 更新方式 | 直接設定新值 | 透過 dispatch action |
+| 邏輯位置 | 散佈在事件處理函式中 | 集中在 reducer 函式中 |
+| 可測試性 | 較難獨立測試 | reducer 是純函式，易於測試 |
+| 除錯 | 需要追蹤每個 setState | action 記錄清楚每次更新的意圖 |
+
+### 實用範例：表單狀態管理
+
+```jsx
+const formReducer = (state, action) => {
+  switch (action.type) {
+    case 'UPDATE_FIELD':
+      return {
+        ...state,
+        values: { ...state.values, [action.field]: action.value },
+        errors: { ...state.errors, [action.field]: '' } // 清除該欄位錯誤
+      };
+    case 'SET_ERROR':
+      return {
+        ...state,
+        errors: { ...state.errors, [action.field]: action.error }
+      };
+    case 'SET_SUBMITTING':
+      return { ...state, isSubmitting: action.value };
+    case 'RESET':
+      return action.initialState;
+    default:
+      return state;
+  }
+};
+
+function RegistrationForm() {
+  const initialState = {
+    values: { name: '', email: '', password: '' },
+    errors: { name: '', email: '', password: '' },
+    isSubmitting: false
+  };
+
+  const [state, dispatch] = useReducer(formReducer, initialState);
+
+  const updateField = (field) => (e) => {
+    dispatch({ type: 'UPDATE_FIELD', field, value: e.target.value });
+  };
+
+  return (
+    <form>
+      <input value={state.values.name} onChange={updateField('name')} />
+      {state.errors.name && <span>{state.errors.name}</span>}
+      {/* ...其他欄位 */}
+    </form>
+  );
+}
+```
+
+## useCallback — 快取函式
+
+`useCallback` 回傳一個被快取（memoized）的函式，只有依賴變化時才會建立新的函式實例。
+
+```jsx
+const memoizedCallback = useCallback(
+  () => {
+    doSomething(a, b);
+  },
+  [a, b] // 只有 a 或 b 變化時才回傳新的函式
+);
+```
+
+### 為什麼需要快取函式？
+
+在 React 中，每次渲染都會建立新的函式。當你把函式作為 props 傳遞給用 `React.memo` 包裝的子元件時，新的函式參考會導致子元件不必要地重新渲染。
+
+```jsx
+// 不使用 useCallback：handleClick 每次都是新的函式
+function Parent() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = () => {
+    console.log('clicked');
+  };
+  // 每次 Parent 渲染，handleClick 都是新的參考
+  // 即使 ExpensiveChild 用 React.memo 包裝，也會重新渲染
+
+  return (
+    <div>
+      <p>{count}</p>
+      <button onClick={() => setCount(c => c + 1)}>+1</button>
+      <ExpensiveChild onClick={handleClick} />
+    </div>
+  );
+}
+
+// 使用 useCallback：handleClick 被快取
+function Parent() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = useCallback(() => {
+    console.log('clicked');
+  }, []); // 依賴不變 → 同一個函式參考
+
+  return (
+    <div>
+      <p>{count}</p>
+      <button onClick={() => setCount(c => c + 1)}>+1</button>
+      <ExpensiveChild onClick={handleClick} />
+    </div>
+  );
+}
+
+const ExpensiveChild = React.memo(function ExpensiveChild({ onClick }) {
+  console.log('ExpensiveChild 渲染了');
+  return <button onClick={onClick}>子元件按鈕</button>;
+});
+```
+
+<Callout type="warning" title="不要過度使用 useCallback">
+`useCallback` 本身也有成本（記憶體和比較依賴的開銷）。只在以下場景使用它：(1) 傳遞給被 `React.memo` 包裝的子元件 (2) 作為其他 Hook 的依賴 (3) 在 effect 中被參考。對於簡單的元件，不使用 `useCallback` 反而更高效。
+</Callout>
+
+## useMemo — 快取計算結果
+
+`useMemo` 快取一個計算結果，只有依賴變化時才重新計算。
+
+```jsx
+const memoizedValue = useMemo(
+  () => expensiveComputation(a, b),
+  [a, b]
+);
+```
+
+### 典型使用場景
+
+```jsx
+function ProductList({ products, filter }) {
+  // 只有 products 或 filter 變化時才重新過濾
+  const filteredProducts = useMemo(() => {
+    console.log('過濾計算執行');
+    return products
+      .filter(p => p.category === filter)
+      .sort((a, b) => a.price - b.price);
+  }, [products, filter]);
+
+  // 計算總價
+  const totalPrice = useMemo(() => {
+    return filteredProducts.reduce((sum, p) => sum + p.price, 0);
+  }, [filteredProducts]);
+
+  return (
+    <div>
+      <p>共 {filteredProducts.length} 件，總價 ${totalPrice}</p>
+      {filteredProducts.map(p => (
+        <ProductCard key={p.id} product={p} />
+      ))}
+    </div>
+  );
+}
+```
+
+### useMemo vs useCallback
+
+```jsx
+// 這兩行效果相同：
+const memoizedFn = useCallback(fn, deps);
+const memoizedFn = useMemo(() => fn, deps);
+
+// useMemo 快取「值」，useCallback 快取「函式」
+// useCallback(fn, deps) 等同於 useMemo(() => fn, deps)
+```
+
+### 使用 useMemo 穩定物件參考
+
+```jsx
+function MapComponent({ lat, lng, zoom }) {
+  // 沒有 useMemo：每次渲染都是新的物件，可能觸發子元件重新渲染
+  // const center = { lat, lng };
+
+  // 使用 useMemo：只有座標變化時才建立新物件
+  const center = useMemo(() => ({ lat, lng }), [lat, lng]);
+
+  return <Map center={center} zoom={zoom} />;
+}
+```
+
+## 自訂 Hook
+
+自訂 Hook 是 React 中實現邏輯重用的核心機制。它是一個以 `use` 開頭的函式，內部可以呼叫其他 Hook。
+
+### 命名規則
+
+自訂 Hook **必須**以 `use` 開頭，這不只是慣例，更是讓 React 的 linter 能夠正確檢查 Hook 規則的關鍵。
+
+```jsx
+// ✓ 正確命名
+function useWindowSize() { /* ... */ }
+function useLocalStorage(key) { /* ... */ }
+function useDebounce(value, delay) { /* ... */ }
+
+// ✗ 錯誤命名
+function getWindowSize() { /* ... */ }  // 不會被當作 Hook
+function windowSizeHook() { /* ... */ } // linter 不會檢查 Hook 規則
+```
+
+### 常見自訂 Hook 模式
+
+```jsx
+// useLocalStorage — 與 localStorage 同步的 state
+function useLocalStorage(key, initialValue) {
+  const [storedValue, setStoredValue] = useState(() => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  const setValue = useCallback((value) => {
+    setStoredValue(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      localStorage.setItem(key, JSON.stringify(newValue));
+      return newValue;
+    });
+  }, [key]);
+
+  return [storedValue, setValue];
+}
+
+// 使用
+function App() {
+  const [theme, setTheme] = useLocalStorage('theme', 'light');
+  return <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>{theme}</button>;
+}
+```
+
+```jsx
+// useDebounce — 延遲更新的值
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// 使用
+function SearchBox() {
+  const [query, setQuery] = useState('');
+  const debouncedQuery = useDebounce(query, 300);
+
+  useEffect(() => {
+    if (debouncedQuery) {
+      searchAPI(debouncedQuery);
+    }
+  }, [debouncedQuery]);
+
+  return <input value={query} onChange={e => setQuery(e.target.value)} />;
+}
+```
+
+```jsx
+// useFetch — 通用資料獲取
+function useFetch(url) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    fetch(url)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(data => { if (!cancelled) setData(data); })
+      .catch(err => { if (!cancelled) setError(err); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [url]);
+
+  return { data, loading, error };
+}
+```
+
+## useId
+
+`useId` 產生在伺服器端和客戶端一致的唯一 ID，主要用於無障礙屬性的關聯：
+
+```jsx
+function FormField({ label }) {
+  const id = useId();
+
+  return (
+    <div>
+      <label htmlFor={id}>{label}</label>
+      <input id={id} type="text" />
+    </div>
+  );
+}
+
+// 一個元件中需要多個 ID
+function PasswordField() {
+  const id = useId();
+
+  return (
+    <div>
+      <label htmlFor={`${id}-password`}>密碼</label>
+      <input id={`${id}-password`} type="password" aria-describedby={`${id}-hint`} />
+      <p id={`${id}-hint`}>密碼至少 8 個字元</p>
+    </div>
+  );
+}
+```
+
+<Callout type="info" title="useId 不是用來產生列表的 key">
+`useId` 產生的 ID 包含 `:` 等特殊字元，不適合用作列表的 key。列表的 key 應該來自資料本身（如資料庫 ID）。`useId` 的設計目的是為了在 SSR 環境中產生穩定的、不會 hydration mismatch 的唯一識別符。
+</Callout>
+
+## useSyncExternalStore
+
+`useSyncExternalStore` 用來訂閱外部資料源（非 React state 管理的資料），確保在 concurrent rendering 下資料的一致性：
+
+```jsx
+import { useSyncExternalStore } from 'react';
+
+// 訂閱瀏覽器的線上/離線狀態
+function useOnlineStatus() {
+  return useSyncExternalStore(
+    // subscribe：設定訂閱
+    (callback) => {
+      window.addEventListener('online', callback);
+      window.addEventListener('offline', callback);
+      return () => {
+        window.removeEventListener('online', callback);
+        window.removeEventListener('offline', callback);
+      };
+    },
+    // getSnapshot：取得當前值
+    () => navigator.onLine,
+    // getServerSnapshot（可選）：SSR 時使用
+    () => true
+  );
+}
+
+function StatusBar() {
+  const isOnline = useOnlineStatus();
+  return <p>狀態：{isOnline ? '在線' : '離線'}</p>;
+}
+```
+
+### 訂閱外部 store
+
+```jsx
+// 搭配自訂的簡易 store
+function createStore(initialState) {
+  let state = initialState;
+  const listeners = new Set();
+
+  return {
+    getState: () => state,
+    setState: (newState) => {
+      state = typeof newState === 'function' ? newState(state) : newState;
+      listeners.forEach(fn => fn());
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }
+  };
+}
+
+const counterStore = createStore({ count: 0 });
+
+function useStore(store, selector) {
+  return useSyncExternalStore(
+    store.subscribe,
+    () => selector(store.getState())
+  );
+}
+
+function Counter() {
+  const count = useStore(counterStore, s => s.count);
+  return <button onClick={() => counterStore.setState(s => ({ count: s.count + 1 }))}>
+    {count}
+  </button>;
+}
+```
+
+## Hook 規則
+
+React Hook 有兩條必須遵守的規則：
+
+### 規則一：只在最頂層呼叫 Hook
+
+```jsx
+// ✗ 錯誤：在條件式中呼叫
+function Bad({ showExtra }) {
+  const [name, setName] = useState('');
+  if (showExtra) {
+    const [extra, setExtra] = useState(''); // 可能破壞 Hook 的呼叫順序！
+  }
+}
+
+// ✓ 正確：Hook 始終在頂層呼叫
+function Good({ showExtra }) {
+  const [name, setName] = useState('');
+  const [extra, setExtra] = useState(''); // 即使不需要也要呼叫
+  // 在渲染邏輯中決定是否使用 extra
+}
+```
+
+React 依賴 Hook 的呼叫順序來對應每個 Hook 的狀態。如果呼叫順序在不同渲染間不一致，狀態就會錯位。
+
+### 規則二：只在 React 函式中呼叫 Hook
+
+```jsx
+// ✓ 可以呼叫 Hook 的地方：
+function MyComponent() { useState(); }      // React 元件
+function useMyHook() { useState(); }         // 自訂 Hook
+
+// ✗ 不可以呼叫 Hook 的地方：
+function regularFunction() { useState(); }   // 普通函式
+class MyClass { render() { useState(); } }   // Class 元件
+```
+
+## Hook 組合模式
+
+進階的自訂 Hook 可以透過組合多個 Hook 來實現複雜的功能：
+
+```jsx
+// 組合多個基礎 Hook 成更強大的自訂 Hook
+function useAsync(asyncFn, dependencies) {
+  const [state, dispatch] = useReducer(
+    (state, action) => {
+      switch (action.type) {
+        case 'PENDING': return { status: 'pending', data: null, error: null };
+        case 'FULFILLED': return { status: 'fulfilled', data: action.payload, error: null };
+        case 'REJECTED': return { status: 'rejected', data: null, error: action.error };
+        default: return state;
+      }
+    },
+    { status: 'idle', data: null, error: null }
+  );
+
+  const memoizedFn = useCallback(asyncFn, dependencies);
+
+  useEffect(() => {
+    let cancelled = false;
+    dispatch({ type: 'PENDING' });
+
+    memoizedFn()
+      .then(data => { if (!cancelled) dispatch({ type: 'FULFILLED', payload: data }); })
+      .catch(error => { if (!cancelled) dispatch({ type: 'REJECTED', error }); });
+
+    return () => { cancelled = true; };
+  }, [memoizedFn]);
+
+  return state;
+}
+
+// 使用
+function UserProfile({ userId }) {
+  const { status, data: user, error } = useAsync(
+    () => fetch(`/api/users/${userId}`).then(r => r.json()),
+    [userId]
+  );
+
+  if (status === 'pending') return <p>載入中...</p>;
+  if (status === 'rejected') return <p>錯誤：{error.message}</p>;
+  if (status === 'fulfilled') return <h1>{user.name}</h1>;
+  return null;
+}
+```
+
+## 互動範例：useReducer TodoList
+
+<CodePlayground
+  title="useReducer 實作 Todo List"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: system-ui, sans-serif; padding: 16px; }
+.todo-app { max-width: 500px; margin: 0 auto; }
+.todo-header { display: flex; gap: 8px; margin-bottom: 16px; }
+.todo-input { flex: 1; padding: 10px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 14px; outline: none; }
+.todo-input:focus { border-color: #3b82f6; }
+.add-btn { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.add-btn:hover { background: #2563eb; }
+.todo-item { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid #f1f5f9; }
+.todo-item.done .todo-text { text-decoration: line-through; color: #94a3b8; }
+.todo-text { flex: 1; font-size: 14px; }
+.todo-checkbox { width: 20px; height: 20px; cursor: pointer; accent-color: #10b981; }
+.delete-btn { padding: 4px 10px; background: #fee2e2; color: #ef4444; border: 1px solid #fca5a5; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.delete-btn:hover { background: #fca5a5; }
+.filters { display: flex; gap: 6px; margin-bottom: 12px; }
+.filter-btn { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 20px; cursor: pointer; font-size: 13px; background: white; }
+.filter-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+.stats { display: flex; justify-content: space-between; padding: 12px 0; font-size: 13px; color: #64748b; border-top: 1px solid #e2e8f0; margin-top: 12px; }
+.clear-btn { color: #ef4444; cursor: pointer; background: none; border: none; font-size: 13px; }
+.clear-btn:hover { text-decoration: underline; }
+.empty { text-align: center; padding: 32px; color: #94a3b8; }`}
+  defaultJS={`const { useReducer, useState, useMemo, useCallback, useRef, useEffect } = React;
+
+var nextId = 1;
+
+function todoReducer(state, action) {
+  switch (action.type) {
+    case 'ADD':
+      return {
+        todos: state.todos.concat([{
+          id: nextId++,
+          text: action.text,
+          done: false,
+          createdAt: Date.now()
+        }]),
+        filter: state.filter
+      };
+    case 'TOGGLE':
+      return {
+        todos: state.todos.map(function(t) {
+          return t.id === action.id ? Object.assign({}, t, { done: !t.done }) : t;
+        }),
+        filter: state.filter
+      };
+    case 'DELETE':
+      return {
+        todos: state.todos.filter(function(t) { return t.id !== action.id; }),
+        filter: state.filter
+      };
+    case 'CLEAR_DONE':
+      return {
+        todos: state.todos.filter(function(t) { return !t.done; }),
+        filter: state.filter
+      };
+    case 'SET_FILTER':
+      return { todos: state.todos, filter: action.filter };
+    default:
+      return state;
+  }
+}
+
+var initialState = {
+  todos: [
+    { id: nextId++, text: '學習 useReducer', done: true, createdAt: Date.now() },
+    { id: nextId++, text: '學習 useCallback', done: false, createdAt: Date.now() },
+    { id: nextId++, text: '建立自訂 Hook', done: false, createdAt: Date.now() }
+  ],
+  filter: 'all'
+};
+
+function TodoApp() {
+  var _r = useReducer(todoReducer, initialState);
+  var state = _r[0], dispatch = _r[1];
+
+  var _s = useState('');
+  var input = _s[0], setInput = _s[1];
+
+  var inputRef = useRef(null);
+
+  var filteredTodos = useMemo(function() {
+    switch (state.filter) {
+      case 'active': return state.todos.filter(function(t) { return !t.done; });
+      case 'done': return state.todos.filter(function(t) { return t.done; });
+      default: return state.todos;
+    }
+  }, [state.todos, state.filter]);
+
+  var stats = useMemo(function() {
+    var total = state.todos.length;
+    var done = state.todos.filter(function(t) { return t.done; }).length;
+    return { total: total, done: done, active: total - done };
+  }, [state.todos]);
+
+  var handleAdd = useCallback(function() {
+    var text = input.trim();
+    if (!text) return;
+    dispatch({ type: 'ADD', text: text });
+    setInput('');
+    inputRef.current && inputRef.current.focus();
+  }, [input]);
+
+  var handleKeyDown = useCallback(function(e) {
+    if (e.key === 'Enter') handleAdd();
+  }, [handleAdd]);
+
+  var filters = ['all', 'active', 'done'];
+  var filterLabels = { all: '全部', active: '未完成', done: '已完成' };
+
+  return React.createElement('div', { className: 'todo-app' },
+    React.createElement('h3', { style: { marginBottom: 16 } }, 'useReducer Todo List'),
+
+    React.createElement('div', { className: 'todo-header' },
+      React.createElement('input', {
+        ref: inputRef,
+        className: 'todo-input',
+        value: input,
+        onChange: function(e) { setInput(e.target.value); },
+        onKeyDown: handleKeyDown,
+        placeholder: '新增待辦事項...'
+      }),
+      React.createElement('button', {
+        className: 'add-btn',
+        onClick: handleAdd
+      }, '新增')
+    ),
+
+    React.createElement('div', { className: 'filters' },
+      filters.map(function(f) {
+        return React.createElement('button', {
+          key: f,
+          className: 'filter-btn' + (state.filter === f ? ' active' : ''),
+          onClick: function() { dispatch({ type: 'SET_FILTER', filter: f }); }
+        }, filterLabels[f] + ' (' + (f === 'all' ? stats.total : f === 'active' ? stats.active : stats.done) + ')');
+      })
+    ),
+
+    filteredTodos.length === 0
+      ? React.createElement('div', { className: 'empty' }, '沒有待辦事項')
+      : filteredTodos.map(function(todo) {
+          return React.createElement('div', {
+            key: todo.id,
+            className: 'todo-item' + (todo.done ? ' done' : '')
+          },
+            React.createElement('input', {
+              type: 'checkbox',
+              className: 'todo-checkbox',
+              checked: todo.done,
+              onChange: function() { dispatch({ type: 'TOGGLE', id: todo.id }); }
+            }),
+            React.createElement('span', { className: 'todo-text' }, todo.text),
+            React.createElement('button', {
+              className: 'delete-btn',
+              onClick: function() { dispatch({ type: 'DELETE', id: todo.id }); }
+            }, '刪除')
+          );
+        }),
+
+    stats.total > 0 && React.createElement('div', { className: 'stats' },
+      React.createElement('span', null, stats.active + ' 項未完成'),
+      stats.done > 0 && React.createElement('button', {
+        className: 'clear-btn',
+        onClick: function() { dispatch({ type: 'CLEAR_DONE' }); }
+      }, '清除已完成')
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(TodoApp));`}
+  dependencies={["react"]}
+/>
+
+## 面試重點整理
+
+1. **useReducer 適用場景**：狀態邏輯複雜、多個相關狀態需要一起更新、需要根據 action 進行不同的狀態變更
+2. **useCallback 的作用**：快取函式參考，避免傳遞給 `React.memo` 子元件時觸發不必要的重新渲染
+3. **useMemo vs useCallback**：`useMemo` 快取計算結果，`useCallback` 快取函式；`useCallback(fn, deps)` 等同 `useMemo(() => fn, deps)`
+4. **自訂 Hook 規則**：必須以 `use` 開頭，內部可以呼叫其他 Hook，用於邏輯重用而非 UI 重用
+5. **Hook 規則**：只在頂層呼叫、只在 React 函式中呼叫，不能放在條件式或迴圈中
+6. **useId**：產生 SSR 安全的唯一 ID，用於無障礙屬性，不適合做列表的 key
+7. **useSyncExternalStore**：訂閱 React 外部的資料源，確保 concurrent rendering 下的一致性
+8. **效能優化的原則**：先測量再優化，不要預先使用 `useMemo`/`useCallback`，只在確認效能瓶頸後才加入
+
+下一篇我們將學習 Context 與狀態管理，了解如何在元件樹中共享資料而不需要逐層傳遞 props。

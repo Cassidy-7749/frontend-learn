@@ -1,0 +1,801 @@
+# 表單處理
+
+表單是使用者與應用程式互動的核心介面。在 React 中，表單處理有其獨特的模式——受控元件與非受控元件。掌握這兩種模式，並了解表單驗證策略與現代 API，是建構穩健前端應用的關鍵。
+
+## 受控元件（Controlled Components）
+
+受控元件是 React 中最推薦的表單處理方式。表單元素的值完全由 React state 控制，每次使用者輸入都會觸發 state 更新，再由 state 決定畫面顯示：
+
+```jsx
+import { useState } from 'react';
+
+function ControlledInput() {
+  const [name, setName] = useState('');
+
+  const handleChange = (e) => {
+    setName(e.target.value);
+  };
+
+  return (
+    <input
+      type="text"
+      value={name}
+      onChange={handleChange}
+      placeholder="請輸入姓名"
+    />
+  );
+}
+```
+
+### 受控元件的資料流
+
+```
+使用者輸入 → 觸發 onChange → 更新 state → React 重新渲染 → input 顯示新值
+```
+
+這種「單一資料來源」（Single Source of Truth）的模式讓資料流清晰可預測。你可以在 `onChange` 中對輸入值進行即時處理：
+
+```jsx
+function FormattedInput() {
+  const [phone, setPhone] = useState('');
+
+  const handleChange = (e) => {
+    // 只允許數字輸入，自動格式化
+    const digits = e.target.value.replace(/\D/g, '');
+    const formatted = digits.replace(/(\d{4})(\d{3})(\d{3})/, '$1-$2-$3');
+    setPhone(formatted);
+  };
+
+  return <input value={phone} onChange={handleChange} placeholder="0912-345-678" />;
+}
+```
+
+### 受控元件的優勢
+
+- **即時驗證**：每次輸入變化都能進行檢查
+- **條件式禁用**：根據輸入內容控制提交按鈕
+- **格式化輸入**：自動調整使用者輸入的格式
+- **動態表單**：根據某欄位的值動態顯示其他欄位
+
+## 非受控元件（Uncontrolled Components）
+
+非受控元件讓 DOM 自身管理表單狀態，React 透過 `ref` 在需要時讀取值：
+
+```jsx
+import { useRef } from 'react';
+
+function UncontrolledInput() {
+  const inputRef = useRef(null);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log('輸入值:', inputRef.current.value);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="text"
+        ref={inputRef}
+        defaultValue="預設值"
+      />
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+```
+
+<Callout type="info" title="value vs defaultValue">
+受控元件使用 `value` 搭配 `onChange`；非受控元件使用 `defaultValue`（或 `defaultChecked`）設定初始值。如果在非受控元件上設定 `value` 卻沒有 `onChange`，React 會發出警告，且輸入框將變成唯讀。
+</Callout>
+
+### 何時選擇非受控元件
+
+| 場景 | 推薦方式 |
+|------|---------|
+| 即時驗證、格式化 | 受控元件 |
+| 簡單表單、一次性讀取 | 非受控元件 |
+| 整合第三方 DOM 函式庫 | 非受控元件 |
+| 檔案上傳（`<input type="file">`） | 非受控元件 |
+| 效能敏感的大量輸入 | 非受控元件 |
+
+## input、textarea 與 select 處理
+
+### input 各種類型
+
+```jsx
+function InputTypes() {
+  const [form, setForm] = useState({
+    text: '',
+    email: '',
+    password: '',
+    number: 0,
+    checked: false,
+    radio: 'option1'
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  return (
+    <form>
+      <input name="text" type="text" value={form.text} onChange={handleChange} />
+      <input name="email" type="email" value={form.email} onChange={handleChange} />
+      <input name="password" type="password" value={form.password} onChange={handleChange} />
+      <input name="number" type="number" value={form.number} onChange={handleChange} />
+      <input name="checked" type="checkbox" checked={form.checked} onChange={handleChange} />
+
+      <input name="radio" type="radio" value="option1"
+        checked={form.radio === 'option1'} onChange={handleChange} />
+      <input name="radio" type="radio" value="option2"
+        checked={form.radio === 'option2'} onChange={handleChange} />
+    </form>
+  );
+}
+```
+
+### textarea
+
+在原生 HTML 中，`<textarea>` 使用子元素設定內容。在 React 中則統一使用 `value` 屬性：
+
+```jsx
+function TextareaExample() {
+  const [bio, setBio] = useState('');
+
+  return (
+    <textarea
+      value={bio}
+      onChange={(e) => setBio(e.target.value)}
+      rows={4}
+      maxLength={500}
+      placeholder="自我介紹..."
+    />
+  );
+}
+```
+
+### select
+
+React 的 `<select>` 使用 `value` 屬性控制選中項目，取代原生的 `selected` 屬性：
+
+```jsx
+function SelectExample() {
+  const [city, setCity] = useState('taipei');
+
+  return (
+    <select value={city} onChange={(e) => setCity(e.target.value)}>
+      <option value="">請選擇城市</option>
+      <option value="taipei">台北</option>
+      <option value="taichung">台中</option>
+      <option value="kaohsiung">高雄</option>
+    </select>
+  );
+}
+
+// 多選
+function MultiSelect() {
+  const [selected, setSelected] = useState([]);
+
+  const handleChange = (e) => {
+    const options = Array.from(e.target.selectedOptions, opt => opt.value);
+    setSelected(options);
+  };
+
+  return (
+    <select multiple value={selected} onChange={handleChange}>
+      <option value="react">React</option>
+      <option value="vue">Vue</option>
+      <option value="angular">Angular</option>
+    </select>
+  );
+}
+```
+
+## 多欄位表單管理
+
+當表單欄位增多時，為每個欄位建立個別的 state 會變得冗長。使用物件 state 搭配動態 key 是更好的做法：
+
+```jsx
+function RegistrationForm() {
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    agreeTerms: false
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log('表單資料:', formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="username" value={formData.username} onChange={handleChange} />
+      <input name="email" type="email" value={formData.email} onChange={handleChange} />
+      <input name="password" type="password" value={formData.password} onChange={handleChange} />
+      <input name="confirmPassword" type="password"
+        value={formData.confirmPassword} onChange={handleChange} />
+      <label>
+        <input name="agreeTerms" type="checkbox"
+          checked={formData.agreeTerms} onChange={handleChange} />
+        同意使用條款
+      </label>
+      <button type="submit" disabled={!formData.agreeTerms}>註冊</button>
+    </form>
+  );
+}
+```
+
+### 使用 useReducer 管理複雜表單
+
+當表單邏輯更複雜時，`useReducer` 能提供更清晰的狀態管理：
+
+```jsx
+function formReducer(state, action) {
+  switch (action.type) {
+    case 'UPDATE_FIELD':
+      return { ...state, [action.field]: action.value };
+    case 'SET_ERROR':
+      return { ...state, errors: { ...state.errors, [action.field]: action.error } };
+    case 'RESET':
+      return action.initialState;
+    default:
+      return state;
+  }
+}
+
+function ComplexForm() {
+  const initialState = { name: '', email: '', errors: {} };
+  const [state, dispatch] = useReducer(formReducer, initialState);
+
+  const updateField = (field, value) => {
+    dispatch({ type: 'UPDATE_FIELD', field, value });
+  };
+
+  // ...
+}
+```
+
+## 表單驗證策略
+
+### 原生 HTML 驗證
+
+最簡單的方式是利用瀏覽器內建驗證：
+
+```jsx
+function NativeValidation() {
+  return (
+    <form>
+      <input type="email" required placeholder="Email（必填）" />
+      <input type="text" minLength={3} maxLength={20} required placeholder="使用者名稱" />
+      <input type="url" pattern="https://.*" placeholder="網址（https）" />
+      <input type="number" min={0} max={100} placeholder="年齡" />
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+```
+
+原生驗證的優點是零 JavaScript 成本，但樣式和錯誤訊息難以客製化。
+
+### 自訂驗證（提交時驗證）
+
+```jsx
+function CustomValidation() {
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [errors, setErrors] = useState({});
+
+  const validate = () => {
+    const newErrors = {};
+
+    if (!formData.email) {
+      newErrors.email = '請輸入 Email';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email 格式不正確';
+    }
+
+    if (!formData.password) {
+      newErrors.password = '請輸入密碼';
+    } else if (formData.password.length < 8) {
+      newErrors.password = '密碼至少需要 8 個字元';
+    }
+
+    return newErrors;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    // 送出表單
+    console.log('送出:', formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        value={formData.email}
+        onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+      />
+      {errors.email && <span className="error">{errors.email}</span>}
+
+      <input
+        type="password"
+        value={formData.password}
+        onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+      />
+      {errors.password && <span className="error">{errors.password}</span>}
+
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+```
+
+### 即時驗證（onChange / onBlur）
+
+```jsx
+function RealtimeValidation() {
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [touched, setTouched] = useState(false);
+
+  const validateEmail = (value) => {
+    if (!value) return '請輸入 Email';
+    if (!/\S+@\S+\.\S+/.test(value)) return 'Email 格式不正確';
+    return '';
+  };
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setEmail(value);
+    // 只在使用者已經操作過後才即時驗證
+    if (touched) {
+      setError(validateEmail(value));
+    }
+  };
+
+  const handleBlur = () => {
+    setTouched(true);
+    setError(validateEmail(email));
+  };
+
+  return (
+    <div>
+      <input
+        value={email}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        className={error ? 'input-error' : ''}
+      />
+      {error && <span className="error">{error}</span>}
+    </div>
+  );
+}
+```
+
+<Callout type="tip" title="驗證時機的最佳實踐">
+最佳的使用者體驗是「失焦後開始驗證，之後即時驗證」。也就是說，第一次錯誤訊息在 `onBlur` 時出現，之後每次 `onChange` 都即時更新驗證結果。這樣既不會在使用者打字時就顯示錯誤，又能在發現問題後即時回饋。
+</Callout>
+
+## 互動範例：受控表單驗證
+
+<CodePlayground
+  title="受控表單驗證範例"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+.form-container { max-width: 400px; margin: 0 auto; background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+h2 { margin-top: 0; color: #333; }
+.field { margin-bottom: 16px; }
+.field label { display: block; margin-bottom: 4px; font-weight: bold; color: #555; font-size: 14px; }
+.field input { width: 100%; padding: 8px 12px; border: 2px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; transition: border-color 0.2s; }
+.field input:focus { outline: none; border-color: #4a90d9; }
+.field input.error { border-color: #e74c3c; }
+.field input.valid { border-color: #2ecc71; }
+.error-msg { color: #e74c3c; font-size: 12px; margin-top: 4px; }
+.submit-btn { width: 100%; padding: 10px; background: #4a90d9; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+.submit-btn:disabled { background: #ccc; cursor: not-allowed; }
+.submit-btn:not(:disabled):hover { background: #357abd; }
+.success { color: #2ecc71; text-align: center; padding: 12px; background: #eafaf1; border-radius: 4px; margin-top: 12px; }`}
+  defaultJS={`const { useState } = React;
+
+function App() {
+  const initState = { username: '', email: '', password: '' };
+  const initErrors = { username: '', email: '', password: '' };
+  const initTouched = { username: false, email: false, password: false };
+
+  const s = useState(initState);
+  const formData = s[0]; const setFormData = s[1];
+  const e = useState(initErrors);
+  const errors = e[0]; const setErrors = e[1];
+  const t = useState(initTouched);
+  const touched = t[0]; const setTouched = t[1];
+  const sub = useState(false);
+  const submitted = sub[0]; const setSubmitted = sub[1];
+
+  function validateField(name, value) {
+    if (name === 'username') {
+      if (!value) return '請輸入使用者名稱';
+      if (value.length < 3) return '至少 3 個字元';
+      if (value.length > 15) return '不可超過 15 個字元';
+      return '';
+    }
+    if (name === 'email') {
+      if (!value) return '請輸入 Email';
+      if (!/\\S+@\\S+\\.\\S+/.test(value)) return 'Email 格式不正確';
+      return '';
+    }
+    if (name === 'password') {
+      if (!value) return '請輸入密碼';
+      if (value.length < 8) return '密碼至少 8 個字元';
+      if (!/[A-Z]/.test(value)) return '需包含至少一個大寫字母';
+      if (!/[0-9]/.test(value)) return '需包含至少一個數字';
+      return '';
+    }
+    return '';
+  }
+
+  function handleChange(ev) {
+    var name = ev.target.name;
+    var value = ev.target.value;
+    var next = {}; next[name] = value;
+    setFormData(function(p) { return Object.assign({}, p, next); });
+    if (touched[name]) {
+      var errNext = {}; errNext[name] = validateField(name, value);
+      setErrors(function(p) { return Object.assign({}, p, errNext); });
+    }
+  }
+
+  function handleBlur(ev) {
+    var name = ev.target.name;
+    var value = ev.target.value;
+    var tNext = {}; tNext[name] = true;
+    setTouched(function(p) { return Object.assign({}, p, tNext); });
+    var eNext = {}; eNext[name] = validateField(name, value);
+    setErrors(function(p) { return Object.assign({}, p, eNext); });
+  }
+
+  function handleSubmit(ev) {
+    ev.preventDefault();
+    var newErrors = {
+      username: validateField('username', formData.username),
+      email: validateField('email', formData.email),
+      password: validateField('password', formData.password)
+    };
+    setErrors(newErrors);
+    setTouched({ username: true, email: true, password: true });
+    var hasError = Object.values(newErrors).some(function(e) { return e !== ''; });
+    if (!hasError) {
+      setSubmitted(true);
+      console.log('表單送出:', formData);
+    }
+  }
+
+  function getClass(name) {
+    if (!touched[name]) return '';
+    return errors[name] ? 'error' : 'valid';
+  }
+
+  if (submitted) {
+    return React.createElement('div', { className: 'form-container' },
+      React.createElement('div', { className: 'success' },
+        '註冊成功！歡迎 ' + formData.username
+      ),
+      React.createElement('button', {
+        className: 'submit-btn',
+        style: { marginTop: '12px' },
+        onClick: function() { setFormData(initState); setErrors(initErrors); setTouched(initTouched); setSubmitted(false); }
+      }, '重新填寫')
+    );
+  }
+
+  return React.createElement('div', { className: 'form-container' },
+    React.createElement('h2', null, '會員註冊'),
+    React.createElement('form', { onSubmit: handleSubmit },
+      React.createElement('div', { className: 'field' },
+        React.createElement('label', null, '使用者名稱'),
+        React.createElement('input', { name: 'username', value: formData.username, onChange: handleChange, onBlur: handleBlur, className: getClass('username'), placeholder: '3-15 個字元' }),
+        touched.username && errors.username ? React.createElement('div', { className: 'error-msg' }, errors.username) : null
+      ),
+      React.createElement('div', { className: 'field' },
+        React.createElement('label', null, 'Email'),
+        React.createElement('input', { name: 'email', type: 'email', value: formData.email, onChange: handleChange, onBlur: handleBlur, className: getClass('email'), placeholder: 'example@mail.com' }),
+        touched.email && errors.email ? React.createElement('div', { className: 'error-msg' }, errors.email) : null
+      ),
+      React.createElement('div', { className: 'field' },
+        React.createElement('label', null, '密碼'),
+        React.createElement('input', { name: 'password', type: 'password', value: formData.password, onChange: handleChange, onBlur: handleBlur, className: getClass('password'), placeholder: '至少 8 字元，含大寫與數字' }),
+        touched.password && errors.password ? React.createElement('div', { className: 'error-msg' }, errors.password) : null
+      ),
+      React.createElement('button', { className: 'submit-btn', type: 'submit' }, '註冊')
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));`}
+  dependencies={["react"]}
+/>
+
+## useActionState（React 19）
+
+React 19 引入了 `useActionState`（原名 `useFormState`），讓表單動作處理更加宣告式：
+
+```jsx
+import { useActionState } from 'react';
+
+async function submitForm(prevState, formData) {
+  const username = formData.get('username');
+  const email = formData.get('email');
+
+  // 模擬伺服器驗證
+  if (username.length < 3) {
+    return { error: '使用者名稱至少需要 3 個字元' };
+  }
+
+  // 模擬 API 呼叫
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  return { success: true, message: `歡迎，${username}！` };
+}
+
+function SignupForm() {
+  const [state, formAction, isPending] = useActionState(submitForm, null);
+
+  return (
+    <form action={formAction}>
+      <input name="username" placeholder="使用者名稱" disabled={isPending} />
+      <input name="email" type="email" placeholder="Email" disabled={isPending} />
+      <button type="submit" disabled={isPending}>
+        {isPending ? '送出中...' : '註冊'}
+      </button>
+      {state?.error && <p className="error">{state.error}</p>}
+      {state?.success && <p className="success">{state.message}</p>}
+    </form>
+  );
+}
+```
+
+### 搭配 useFormStatus
+
+`useFormStatus` 可以讓子元件得知表單的提交狀態：
+
+```jsx
+import { useFormStatus } from 'react-dom';
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? '送出中...' : '送出'}
+    </button>
+  );
+}
+
+function MyForm() {
+  const [state, formAction] = useActionState(handleSubmit, null);
+  return (
+    <form action={formAction}>
+      <input name="data" />
+      <SubmitButton /> {/* 自動感知 pending 狀態 */}
+    </form>
+  );
+}
+```
+
+<Callout type="warning" title="useActionState 注意事項">
+`useActionState` 是 React 19 的新 API。在早期的 React canary 版本中它叫做 `useFormState`（來自 `react-dom`），後來被重新命名並移至 `react` 套件。使用前請確認你的 React 版本。此外，`useFormStatus` 必須在 `<form>` 的子元件中使用，不能在同一個元件中直接呼叫。
+</Callout>
+
+## 表單庫概述
+
+當表單複雜度提升，自行管理驗證邏輯會變得繁瑣。表單庫能大幅簡化這個過程。
+
+### React Hook Form
+
+目前最受歡迎的表單庫，以效能和簡潔著稱：
+
+```jsx
+import { useForm } from 'react-hook-form';
+
+function LoginForm() {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting }
+  } = useForm();
+
+  const onSubmit = async (data) => {
+    await login(data);
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input
+        {...register('email', {
+          required: '必填',
+          pattern: { value: /\S+@\S+\.\S+/, message: '格式不正確' }
+        })}
+      />
+      {errors.email && <span>{errors.email.message}</span>}
+
+      <input
+        type="password"
+        {...register('password', {
+          required: '必填',
+          minLength: { value: 8, message: '至少 8 個字元' }
+        })}
+      />
+      {errors.password && <span>{errors.password.message}</span>}
+
+      <button disabled={isSubmitting}>登入</button>
+    </form>
+  );
+}
+```
+
+React Hook Form 預設使用非受控元件模式（透過 `ref`），因此重新渲染次數極少，效能優異。
+
+### Formik
+
+另一個成熟的表單庫，採用受控元件模式：
+
+```jsx
+import { Formik, Form, Field, ErrorMessage } from 'formik';
+import * as Yup from 'yup';
+
+const validationSchema = Yup.object({
+  email: Yup.string().email('格式不正確').required('必填'),
+  password: Yup.string().min(8, '至少 8 個字元').required('必填')
+});
+
+function LoginForm() {
+  return (
+    <Formik
+      initialValues={{ email: '', password: '' }}
+      validationSchema={validationSchema}
+      onSubmit={(values) => console.log(values)}
+    >
+      <Form>
+        <Field name="email" type="email" />
+        <ErrorMessage name="email" component="span" />
+
+        <Field name="password" type="password" />
+        <ErrorMessage name="password" component="span" />
+
+        <button type="submit">登入</button>
+      </Form>
+    </Formik>
+  );
+}
+```
+
+### 比較
+
+| 特性 | React Hook Form | Formik |
+|------|----------------|--------|
+| 元件模式 | 非受控（預設） | 受控 |
+| 重新渲染 | 極少 | 較頻繁 |
+| 套件大小 | ~9KB | ~13KB + Yup |
+| 學習曲線 | 低 | 中 |
+| TypeScript 支援 | 優秀 | 良好 |
+
+## 檔案上傳處理
+
+`<input type="file">` 是天然的非受控元件，因為它的值只能由使用者設定，無法透過程式碼指定：
+
+```jsx
+function FileUpload() {
+  const [preview, setPreview] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 檔案類型檢查
+    if (!file.type.startsWith('image/')) {
+      alert('請選擇圖片檔案');
+      return;
+    }
+
+    // 檔案大小檢查（5MB）
+    if (file.size > 5 * 1024 * 1024) {
+      alert('檔案大小不可超過 5MB');
+      return;
+    }
+
+    // 預覽
+    const reader = new FileReader();
+    reader.onload = (e) => setPreview(e.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleUpload = async () => {
+    const file = fileInputRef.current.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData // 不需設定 Content-Type，瀏覽器會自動處理
+    });
+  };
+
+  return (
+    <div>
+      <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" />
+      {preview && <img src={preview} alt="預覽" width={200} />}
+      <button onClick={handleUpload}>上傳</button>
+    </div>
+  );
+}
+```
+
+### 拖放上傳
+
+```jsx
+function DragDropUpload() {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragIn = (e) => { handleDrag(e); setIsDragging(true); };
+  const handleDragOut = (e) => { handleDrag(e); setIsDragging(false); };
+
+  const handleDrop = (e) => {
+    handleDrag(e);
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      console.log('拖放的檔案:', files[0]);
+    }
+  };
+
+  return (
+    <div
+      onDragEnter={handleDragIn}
+      onDragLeave={handleDragOut}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+      className={isDragging ? 'drop-zone active' : 'drop-zone'}
+    >
+      拖放檔案到此處
+    </div>
+  );
+}
+```
+
+## 面試重點整理
+
+1. **受控 vs 非受控元件**：受控元件由 React state 驅動，資料流清晰；非受控元件由 DOM 管理，適合簡單場景或檔案上傳
+2. **表單驗證策略**：原生驗證最簡單但難客製化；自訂驗證靈活但需更多程式碼；最佳 UX 是「失焦後驗證，之後即時驗證」
+3. **多欄位管理**：使用物件 state 搭配 computed property names（`[name]: value`），或使用 `useReducer` 管理複雜邏輯
+4. **React 19 新 API**：`useActionState` 簡化表單動作處理，`useFormStatus` 讓子元件感知提交狀態
+5. **表單庫選擇**：React Hook Form 效能最佳（非受控模式），Formik 功能完整但重新渲染較多
+6. **檔案上傳**：`<input type="file">` 必定是非受控的；使用 `FormData` 送出檔案；注意類型和大小驗證
+
+下一篇我們將探討 React 效能優化，學習如何使用 `React.memo`、`useMemo`、`useCallback` 等工具讓應用保持流暢。

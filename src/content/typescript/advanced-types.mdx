@@ -1,0 +1,694 @@
+# 進階型別操作
+
+TypeScript 的型別系統不僅僅是標註變數型別，它本身就是一套強大的程式語言。透過 Mapped Types、Conditional Types 和 Template Literal Types，我們可以在型別層級進行複雜的邏輯運算，打造精確且靈活的型別定義。
+
+## Mapped Types（映射型別）
+
+映射型別讓我們能遍歷一個型別的所有屬性，並對每個屬性進行轉換：
+
+```ts
+// 基本語法：[P in keyof T]
+type Readonly<T> = {
+  readonly [P in keyof T]: T[P];
+};
+
+type Optional<T> = {
+  [P in keyof T]?: T[P];
+};
+
+// 實際範例
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  age: number;
+}
+
+// 將所有屬性包裹為 Promise
+type Promisified<T> = {
+  [P in keyof T]: Promise<T[P]>;
+};
+
+type AsyncUser = Promisified<User>;
+// {
+//   id: Promise<number>;
+//   name: Promise<string>;
+//   email: Promise<string>;
+//   age: Promise<number>;
+// }
+
+// 將所有屬性轉為 getter 方法
+type Getters<T> = {
+  [P in keyof T as `get${Capitalize<string & P>}`]: () => T[P];
+};
+
+type UserGetters = Getters<User>;
+// {
+//   getId: () => number;
+//   getName: () => string;
+//   getEmail: () => string;
+//   getAge: () => number;
+// }
+```
+
+### 修飾符操作
+
+映射型別可以新增或移除 `readonly` 和 `?` 修飾符：
+
+```ts
+// 移除 readonly（使用 -readonly）
+type Mutable<T> = {
+  -readonly [P in keyof T]: T[P];
+};
+
+interface FrozenConfig {
+  readonly host: string;
+  readonly port: number;
+  readonly debug: boolean;
+}
+
+type MutableConfig = Mutable<FrozenConfig>;
+// { host: string; port: number; debug: boolean }
+
+// 移除可選（使用 -?）
+type Concrete<T> = {
+  [P in keyof T]-?: T[P];
+};
+
+interface PartialForm {
+  name?: string;
+  email?: string;
+  age?: number;
+}
+
+type RequiredForm = Concrete<PartialForm>;
+// { name: string; email: string; age: number }
+
+// 同時修改多個修飾符
+type MutableRequired<T> = {
+  -readonly [P in keyof T]-?: T[P];
+};
+```
+
+## Key Remapping（as 子句）
+
+TypeScript 4.1 引入的 `as` 子句讓我們能在映射時重新命名鍵：
+
+```ts
+// 基本重新映射
+type Prefixed<T, Prefix extends string> = {
+  [P in keyof T as `${Prefix}${Capitalize<string & P>}`]: T[P];
+};
+
+type PrefixedUser = Prefixed<User, 'user'>;
+// {
+//   userId: number;
+//   userName: string;
+//   userEmail: string;
+//   userAge: number;
+// }
+
+// 過濾屬性（映射到 never 的鍵會被移除）
+type OnlyStrings<T> = {
+  [P in keyof T as T[P] extends string ? P : never]: T[P];
+};
+
+type StringProps = OnlyStrings<User>;
+// { name: string; email: string }
+
+// 排除特定屬性
+type RemoveKind<T> = {
+  [P in keyof T as Exclude<P, 'kind'>]: T[P];
+};
+
+// 建立事件處理器型別
+type EventHandlers<T> = {
+  [P in keyof T as `on${Capitalize<string & P>}Change`]: (
+    newValue: T[P],
+    oldValue: T[P]
+  ) => void;
+};
+
+type UserEventHandlers = EventHandlers<User>;
+// {
+//   onIdChange: (newValue: number, oldValue: number) => void;
+//   onNameChange: (newValue: string, oldValue: string) => void;
+//   onEmailChange: (newValue: string, oldValue: string) => void;
+//   onAgeChange: (newValue: number, oldValue: number) => void;
+// }
+```
+
+<Callout type="info" title="Capitalize 等內建字串工具型別">
+TypeScript 提供四個內建的字串操作型別：`Capitalize<T>`（首字母大寫）、`Uncapitalize<T>`（首字母小寫）、`Uppercase<T>`（全部大寫）、`Lowercase<T>`（全部小寫），它們在 Key Remapping 中特別實用。
+</Callout>
+
+## Conditional Types（條件型別）
+
+條件型別使用 `extends` 進行型別級的條件判斷：
+
+```ts
+// 基本語法：T extends U ? X : Y
+type IsString<T> = T extends string ? true : false;
+
+type A = IsString<string>;  // true
+type B = IsString<number>;  // false
+type C = IsString<'hello'>; // true（字面量是 string 的子型別）
+
+// 實用範例
+type Flatten<T> = T extends Array<infer Item> ? Item : T;
+
+type Num = Flatten<number[]>;    // number
+type Str = Flatten<string[]>;    // string
+type Raw = Flatten<boolean>;     // boolean（不是陣列，原樣返回）
+
+// 巢狀條件
+type TypeName<T> =
+  T extends string ? 'string' :
+  T extends number ? 'number' :
+  T extends boolean ? 'boolean' :
+  T extends undefined ? 'undefined' :
+  T extends Function ? 'function' :
+  'object';
+
+type T1 = TypeName<string>;    // 'string'
+type T2 = TypeName<() => void>; // 'function'
+type T3 = TypeName<string[]>;   // 'object'
+```
+
+### 條件型別的分配特性
+
+當條件型別作用於聯合型別時，會自動「分配」到每個成員：
+
+```ts
+// 分配特性
+type ToArray<T> = T extends any ? T[] : never;
+
+type StrOrNumArray = ToArray<string | number>;
+// string[] | number[]（不是 (string | number)[]）
+
+// 阻止分配：用方括號包裹
+type ToArrayNonDist<T> = [T] extends [any] ? T[] : never;
+
+type Mixed = ToArrayNonDist<string | number>;
+// (string | number)[]
+
+// Exclude 利用了分配特性
+type MyExclude<T, U> = T extends U ? never : T;
+
+type Result = MyExclude<'a' | 'b' | 'c', 'a' | 'c'>;
+// 分配過程：
+// 'a' extends 'a' | 'c' ? never : 'a'  → never
+// 'b' extends 'a' | 'c' ? never : 'b'  → 'b'
+// 'c' extends 'a' | 'c' ? never : 'c'  → never
+// 結果：never | 'b' | never → 'b'
+```
+
+### infer 關鍵字
+
+`infer` 在條件型別中「推斷」並捕獲型別：
+
+```ts
+// 取得函式回傳型別
+type MyReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
+
+type FnReturn = MyReturnType<(x: number) => string>; // string
+
+// 取得函式第一個參數型別
+type FirstArg<T> = T extends (first: infer F, ...rest: any[]) => any ? F : never;
+
+type First = FirstArg<(name: string, age: number) => void>; // string
+
+// 取得 Promise 的內容型別
+type UnwrapPromise<T> = T extends Promise<infer U> ? UnwrapPromise<U> : T;
+
+type Deep = UnwrapPromise<Promise<Promise<string>>>; // string
+
+// 取得陣列元素型別
+type ElementType<T> = T extends (infer E)[] ? E : never;
+
+type Elem = ElementType<number[]>; // number
+
+// 取得物件值的型別
+type ValueOf<T> = T extends Record<string, infer V> ? V : never;
+
+type Values = ValueOf<{ a: number; b: string }>; // number | string
+
+// 推斷元組的各個位置
+type First2<T extends any[]> = T extends [infer F, ...any[]] ? F : never;
+type Last<T extends any[]> = T extends [...any[], infer L] ? L : never;
+type Middle<T extends any[]> = T extends [any, ...infer M, any] ? M : never;
+
+type F = First2<[1, 2, 3]>; // 1
+type L = Last<[1, 2, 3]>;   // 3
+type M = Middle<[1, 2, 3, 4, 5]>; // [2, 3, 4]
+```
+
+## Template Literal Types
+
+模板字面量型別讓我們在型別層級進行字串操作：
+
+```ts
+// 基本用法
+type Greeting = `Hello, ${string}`;
+const g1: Greeting = 'Hello, World';    // OK
+const g2: Greeting = 'Hello, TypeScript'; // OK
+// const g3: Greeting = 'Hi, World';    // 錯誤！
+
+// 聯合型別的組合爆炸
+type Color = 'red' | 'green' | 'blue';
+type Size = 'small' | 'medium' | 'large';
+type ClassName = `${Size}-${Color}`;
+// 'small-red' | 'small-green' | 'small-blue' |
+// 'medium-red' | 'medium-green' | 'medium-blue' |
+// 'large-red' | 'large-green' | 'large-blue'
+
+// CSS 屬性名稱生成
+type CSSProperty = 'margin' | 'padding';
+type Direction = 'top' | 'right' | 'bottom' | 'left';
+type CSSDirectionProperty = `${CSSProperty}-${Direction}`;
+// 'margin-top' | 'margin-right' | ... | 'padding-left'
+
+// 事件名稱
+type EventName<T extends string> = `${T}Changed`;
+type UserEvents = EventName<'name' | 'email' | 'age'>;
+// 'nameChanged' | 'emailChanged' | 'ageChanged'
+```
+
+### 搭配 infer 解析字串
+
+```ts
+// 解析字串中的型別
+type ParseRoute<T extends string> =
+  T extends `${infer Start}/:${infer Param}/${infer Rest}`
+    ? Param | ParseRoute<`${Rest}`>
+    : T extends `${infer Start}/:${infer Param}`
+      ? Param
+      : never;
+
+type Params = ParseRoute<'/users/:userId/posts/:postId'>;
+// 'userId' | 'postId'
+
+// 將 kebab-case 轉為 camelCase
+type KebabToCamel<S extends string> =
+  S extends `${infer Head}-${infer Tail}`
+    ? `${Head}${KebabToCamel<Capitalize<Tail>>}`
+    : S;
+
+type Camel = KebabToCamel<'background-color'>; // 'backgroundColor'
+type Camel2 = KebabToCamel<'border-top-width'>; // 'borderTopWidth'
+
+// 拆分字串
+type Split<S extends string, D extends string> =
+  S extends `${infer Head}${D}${infer Tail}`
+    ? [Head, ...Split<Tail, D>]
+    : [S];
+
+type Parts = Split<'a.b.c', '.'>; // ['a', 'b', 'c']
+```
+
+## 索引存取型別（T[K]）
+
+透過索引存取來取得型別的特定屬性型別：
+
+```ts
+interface User {
+  id: number;
+  name: string;
+  address: {
+    street: string;
+    city: string;
+    country: string;
+  };
+  roles: string[];
+}
+
+// 取得單一屬性的型別
+type UserName = User['name']; // string
+type UserAddress = User['address']; // { street: string; city: string; country: string }
+
+// 巢狀存取
+type City = User['address']['city']; // string
+
+// 取得陣列元素型別
+type Role = User['roles'][number]; // string
+
+// 使用聯合型別索引
+type IdOrName = User['id' | 'name']; // number | string
+
+// 搭配 keyof
+type UserValues = User[keyof User];
+// number | string | { street: string; city: string; country: string } | string[]
+
+// 元組的索引存取
+type Tuple = [string, number, boolean];
+type First = Tuple[0];  // string
+type Second = Tuple[1]; // number
+type All = Tuple[number]; // string | number | boolean
+```
+
+## typeof 型別運算子
+
+`typeof` 在型別上下文中取得值的型別：
+
+```ts
+const config = {
+  api: 'https://api.example.com',
+  timeout: 5000,
+  retries: 3,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+};
+
+// 從值推導型別
+type Config = typeof config;
+// {
+//   api: string;
+//   timeout: number;
+//   retries: number;
+//   headers: { 'Content-Type': string };
+// }
+
+// 搭配 as const 取得更精確的型別
+const COLORS = {
+  primary: '#007bff',
+  secondary: '#6c757d',
+  success: '#28a745',
+} as const;
+
+type Colors = typeof COLORS;
+// { readonly primary: '#007bff'; readonly secondary: '#6c757d'; readonly success: '#28a745' }
+
+type ColorName = keyof typeof COLORS;
+// 'primary' | 'secondary' | 'success'
+
+type ColorValue = (typeof COLORS)[ColorName];
+// '#007bff' | '#6c757d' | '#28a745'
+
+// 取得函式型別
+function createUser(name: string, age: number) {
+  return { id: Math.random(), name, age };
+}
+
+type CreateUserFn = typeof createUser;
+// (name: string, age: number) => { id: number; name: string; age: number }
+```
+
+## keyof 型別運算子
+
+`keyof` 取得物件型別的所有鍵組成的聯合型別：
+
+```ts
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  category: string;
+}
+
+type ProductKey = keyof Product;
+// 'id' | 'name' | 'price' | 'category'
+
+// 泛型搭配 keyof
+function pluck<T, K extends keyof T>(items: T[], key: K): T[K][] {
+  return items.map(item => item[key]);
+}
+
+const products: Product[] = [
+  { id: 1, name: '筆電', price: 35000, category: '電子' },
+  { id: 2, name: '滑鼠', price: 800, category: '電子' },
+];
+
+const names = pluck(products, 'name');   // string[]
+const prices = pluck(products, 'price'); // number[]
+
+// keyof 與索引簽名
+type StringMap = { [key: string]: unknown };
+type StringMapKeys = keyof StringMap; // string | number
+// 注意：JavaScript 物件的鍵可以是 string 或 number
+
+// keyof 與映射型別結合
+type Nullable<T> = {
+  [P in keyof T]: T[P] | null;
+};
+
+type NullableProduct = Nullable<Product>;
+// { id: number | null; name: string | null; price: number | null; category: string | null }
+```
+
+## Mapped + Conditional 組合
+
+將映射型別與條件型別結合，可以實現非常精細的型別轉換：
+
+```ts
+// 只將函式屬性變為可選
+type OptionalMethods<T> = {
+  [P in keyof T]: T[P] extends Function ? T[P] | undefined : T[P];
+};
+
+// 提取物件中特定型別的屬性名稱
+type KeysOfType<T, V> = {
+  [P in keyof T]: T[P] extends V ? P : never;
+}[keyof T];
+
+type StringKeys = KeysOfType<User, string>;
+// 'name' | 'email'（假設 User 有這些 string 屬性）
+
+// 深層 Partial
+type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object
+    ? T[P] extends Function
+      ? T[P]
+      : DeepPartial<T[P]>
+    : T[P];
+};
+
+interface NestedConfig {
+  server: {
+    host: string;
+    port: number;
+    ssl: {
+      enabled: boolean;
+      cert: string;
+    };
+  };
+  database: {
+    url: string;
+    pool: number;
+  };
+}
+
+type PartialConfig = DeepPartial<NestedConfig>;
+// 所有層級的屬性都變為可選
+
+// 將物件的值型別統一轉換
+type MapValues<T, NewValue> = {
+  [P in keyof T]: NewValue;
+};
+
+type BooleanFlags = MapValues<Product, boolean>;
+// { id: boolean; name: boolean; price: boolean; category: boolean }
+
+// 建立 Setter 型別
+type Setters<T> = {
+  [P in keyof T as `set${Capitalize<string & P>}`]: (value: T[P]) => void;
+};
+
+type UserSetters = Setters<{ name: string; age: number }>;
+// { setName: (value: string) => void; setAge: (value: number) => void }
+```
+
+<Callout type="tip" title="型別級程式設計的偵錯技巧">
+當複雜型別的結果不如預期時，可以將中間步驟提取為獨立的型別別名，然後在 IDE 中滑鼠懸停查看展開後的結果。這是偵錯型別運算最有效的方式。
+</Callout>
+
+## 遞迴型別
+
+TypeScript 支援遞迴型別定義，但要注意深度限制：
+
+```ts
+// JSON 型別定義
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+// 深層唯讀
+type DeepReadonly<T> = T extends (infer U)[]
+  ? ReadonlyArray<DeepReadonly<U>>
+  : T extends object
+    ? { readonly [P in keyof T]: DeepReadonly<T[P]> }
+    : T;
+
+// 深層鍵路徑
+type Paths<T, Depth extends any[] = []> =
+  Depth['length'] extends 5 ? never : // 限制深度防止無限遞迴
+  T extends object
+    ? {
+        [K in keyof T]: K extends string
+          ? T[K] extends object
+            ? K | `${K}.${Paths<T[K], [...Depth, any]>}`
+            : K
+          : never;
+      }[keyof T]
+    : never;
+
+type UserPaths = Paths<{
+  name: string;
+  address: {
+    city: string;
+    zip: number;
+  };
+}>;
+// 'name' | 'address' | 'address.city' | 'address.zip'
+
+// 展平巢狀陣列
+type FlattenArray<T> = T extends Array<infer Item>
+  ? FlattenArray<Item>
+  : T;
+
+type Flat = FlattenArray<number[][][]>; // number
+```
+
+## 常見進階模式
+
+### Builder 模式的型別
+
+```ts
+type Builder<T, Built extends Partial<T> = {}> = {
+  [P in Exclude<keyof T, keyof Built>]: (
+    value: T[P]
+  ) => Builder<T, Built & Pick<T, P>>;
+} & (keyof T extends keyof Built
+  ? { build: () => T }
+  : {});
+```
+
+### 型別安全的路由定義
+
+```ts
+type ExtractParams<Path extends string> =
+  Path extends `${string}:${infer Param}/${infer Rest}`
+    ? { [K in Param | keyof ExtractParams<Rest>]: string }
+    : Path extends `${string}:${infer Param}`
+      ? { [K in Param]: string }
+      : {};
+
+type Params = ExtractParams<'/users/:id/posts/:postId'>;
+// { id: string; postId: string }
+```
+
+### 型別安全的事件系統
+
+```ts
+type EventMap = {
+  click: { x: number; y: number };
+  keypress: { key: string; code: number };
+  scroll: { offset: number };
+};
+
+type EventHandler<T extends keyof EventMap> = (
+  event: EventMap[T]
+) => void;
+
+type AllHandlers = {
+  [K in keyof EventMap as `on${Capitalize<K>}`]: EventHandler<K>;
+};
+// {
+//   onClick: (event: { x: number; y: number }) => void;
+//   onKeypress: (event: { key: string; code: number }) => void;
+//   onScroll: (event: { offset: number }) => void;
+// }
+```
+
+<CodePlayground
+  title="映射和條件概念的 JS 實作"
+  defaultJS={`// === Mapped Types 的 JS 模擬 ===
+// 遍歷物件的所有屬性並轉換
+
+function mapValues(obj, transformFn) {
+  const result = {};
+  for (const key of Object.keys(obj)) {
+    result[key] = transformFn(obj[key], key);
+  }
+  return result;
+}
+
+const user = { name: 'Alice', age: 30, email: 'alice@test.com' };
+
+// 模擬 Nullable<T>：所有值都可能是 null
+const nullable = mapValues(user, v => Math.random() > 0.5 ? v : null);
+console.log('Nullable:', JSON.stringify(nullable));
+
+// 模擬 Getters<T>：生成 getter 方法名稱
+const getterNames = mapValues(user, (_, key) =>
+  'get' + key.charAt(0).toUpperCase() + key.slice(1)
+);
+console.log('Getter names:', JSON.stringify(getterNames));
+console.log('---');
+
+// === Conditional Types 的 JS 模擬 ===
+function typeNameOf(value) {
+  if (typeof value === 'string') return 'string';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'function') return 'function';
+  if (Array.isArray(value)) return 'array';
+  return 'object';
+}
+
+console.log('TypeName of "hello":', typeNameOf('hello'));
+console.log('TypeName of 42:', typeNameOf(42));
+console.log('TypeName of [1,2]:', typeNameOf([1, 2]));
+console.log('---');
+
+// === Key Remapping 模擬 ===
+function createSetters(obj) {
+  const setters = {};
+  for (const key of Object.keys(obj)) {
+    const setterName = 'set' + key.charAt(0).toUpperCase() + key.slice(1);
+    setters[setterName] = function(value) {
+      obj[key] = value;
+      console.log(key + ' 設定為 ' + JSON.stringify(value));
+    };
+  }
+  return setters;
+}
+
+const data = { name: 'Alice', age: 30 };
+const setters = createSetters(data);
+console.log('可用的 setters:', Object.keys(setters));
+setters.setName('Bob');
+setters.setAge(25);
+console.log('更新後:', JSON.stringify(data));
+console.log('---');
+
+// === KeysOfType 模擬：篩選特定型別的屬性 ===
+function keysOfType(obj, typeName) {
+  return Object.keys(obj).filter(key => typeof obj[key] === typeName);
+}
+
+const mixed = { name: 'Alice', age: 30, active: true, email: 'a@b.com' };
+console.log('string 屬性:', keysOfType(mixed, 'string'));
+console.log('number 屬性:', keysOfType(mixed, 'number'));
+console.log('boolean 屬性:', keysOfType(mixed, 'boolean'));`}
+/>
+
+<Callout type="warning" title="進階型別的效能注意事項">
+過度複雜的遞迴型別可能導致 TypeScript 編譯速度明顯變慢，甚至觸發深度限制錯誤。在實際專案中，建議為遞迴型別設定深度限制，並在型別複雜度與可維護性之間取得平衡。
+</Callout>
+
+## 面試重點整理
+
+1. **Mapped Types** 使用 `[P in keyof T]` 遍歷並轉換屬性，可搭配 `+/-readonly` 和 `+/-?` 修飾符
+2. **Key Remapping** `as` 子句可重命名鍵、過濾屬性（映射到 `never` 的鍵被移除）
+3. **Conditional Types** `T extends U ? X : Y` 進行型別級條件判斷，聯合型別會自動分配
+4. **infer 關鍵字** 在條件型別中推斷並捕獲型別，是實作 `ReturnType`、`Parameters` 等工具型別的核心
+5. **Template Literal Types** 在型別層級操作字串，可與聯合型別組合產生大量型別變體
+6. **索引存取型別** `T[K]` 取得屬性型別，`T[number]` 取得陣列元素型別
+7. **遞迴型別** TypeScript 支援但需注意深度限制，常用於 JSON 型別、深層工具型別等場景
+
+本篇涵蓋了 TypeScript 型別系統中最進階的操作技巧。熟練掌握這些工具，能讓你在大型專案中打造精確、靈活且可維護的型別定義，充分發揮 TypeScript 型別系統的威力。

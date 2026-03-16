@@ -1,0 +1,654 @@
+# 模組與型別宣告
+
+TypeScript 的模組系統建立在 ES Modules 之上，同時提供了強大的型別宣告機制。透過 `.d.ts` 宣告檔和 `declare` 關鍵字，我們可以為任何 JavaScript 程式碼添加型別定義，包括第三方函式庫和全域變數。
+
+## TypeScript 模組系統（ES Modules）
+
+TypeScript 完全支援 ES Modules 語法，並在此基礎上增加了型別匯入匯出功能：
+
+```ts
+// math.ts — 匯出
+export function add(a: number, b: number): number {
+  return a + b;
+}
+
+export const PI = 3.14159;
+
+export interface MathResult {
+  value: number;
+  operation: string;
+}
+
+// 預設匯出
+export default class Calculator {
+  calculate(expr: string): number {
+    // ...
+    return 0;
+  }
+}
+```
+
+```ts
+// app.ts — 匯入
+import Calculator, { add, PI, type MathResult } from './math';
+
+// type-only import（TypeScript 3.8+）
+import type { MathResult as Result } from './math';
+
+// 這表示匯入僅用於型別，編譯後會被完全移除
+const result: Result = { value: 42, operation: 'add' };
+```
+
+### type-only 匯入匯出
+
+```ts
+// type-only import — 確保不會產生執行時期程式碼
+import type { User, Post } from './models';
+
+// type-only export
+export type { User, Post };
+
+// 混合匯入（TypeScript 4.5+）
+import { Component, type ComponentProps } from 'react';
+// Component 是值匯入，ComponentProps 是純型別匯入
+
+// 為什麼重要？
+// 1. 避免循環依賴問題
+// 2. 確保 tree-shaking 能正確移除
+// 3. 讓意圖更明確
+```
+
+<Callout type="info" title="isolatedModules 注意事項">
+當啟用 `isolatedModules`（Vite、esbuild 等工具需要），re-export 純型別時必須使用 `export type`。例如 `export type { User } from './models'` 而非 `export { User } from './models'`。否則轉譯工具無法判斷 `User` 是值還是型別。
+</Callout>
+
+## .d.ts 宣告檔
+
+`.d.ts` 檔案是純型別宣告檔，不包含任何實作，只描述「形狀」：
+
+```ts
+// types/api.d.ts
+// 宣告檔中的所有內容都是型別資訊
+
+export interface ApiResponse<T> {
+  data: T;
+  status: number;
+  message: string;
+}
+
+export interface PaginatedResponse<T> extends ApiResponse<T[]> {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+}
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+```
+
+### 自動產生宣告檔
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "declaration": true,        // 產生 .d.ts 檔案
+    "declarationDir": "./dist/types",  // 輸出目錄
+    "emitDeclarationOnly": true  // 只產生 .d.ts（不產生 .js）
+  }
+}
+```
+
+```ts
+// src/utils.ts（原始碼）
+export function formatDate(date: Date, locale: string = 'zh-TW'): string {
+  return date.toLocaleDateString(locale);
+}
+
+// 自動產生的 dist/types/utils.d.ts
+// export declare function formatDate(date: Date, locale?: string): string;
+```
+
+## declare 關鍵字
+
+`declare` 用來告訴 TypeScript「這個東西存在，但不是由我定義的」：
+
+### declare var / let / const
+
+```ts
+// 宣告全域變數
+declare var __DEV__: boolean;
+declare const API_BASE_URL: string;
+
+// 使用時不需要匯入
+if (__DEV__) {
+  console.log('Development mode');
+}
+```
+
+### declare function
+
+```ts
+// 宣告全域函式
+declare function gtag(
+  command: 'config' | 'event',
+  targetId: string,
+  config?: Record<string, any>
+): void;
+
+// 現在可以安全使用
+gtag('event', 'page_view', { page_path: '/home' });
+```
+
+### declare class
+
+```ts
+// 宣告外部類別
+declare class Stripe {
+  constructor(apiKey: string);
+  charges: {
+    create(params: {
+      amount: number;
+      currency: string;
+      source: string;
+    }): Promise<{ id: string; status: string }>;
+  };
+}
+```
+
+### declare module
+
+```ts
+// 為無型別的模組添加宣告
+declare module 'some-untyped-lib' {
+  export function doSomething(input: string): number;
+  export const version: string;
+}
+
+// 宣告非 JS 模組的匯入
+declare module '*.css' {
+  const classes: { readonly [key: string]: string };
+  export default classes;
+}
+
+declare module '*.svg' {
+  import { FC, SVGProps } from 'react';
+  const SVGComponent: FC<SVGProps<SVGSVGElement>>;
+  export default SVGComponent;
+}
+
+declare module '*.png' {
+  const src: string;
+  export default src;
+}
+```
+
+### declare namespace
+
+```ts
+// 宣告命名空間（常用於全域物件）
+declare namespace NodeJS {
+  interface ProcessEnv {
+    NODE_ENV: 'development' | 'production' | 'test';
+    API_URL: string;
+    DATABASE_URL: string;
+  }
+}
+
+// 現在 process.env 有正確型別
+const env = process.env.NODE_ENV;  // 'development' | 'production' | 'test'
+```
+
+## 全域型別擴充
+
+在某些情況下，你需要擴充全域可用的型別：
+
+```ts
+// global.d.ts
+// 使用 declare global 在模組檔案中宣告全域型別
+
+export {};  // 讓這個檔案成為模組
+
+declare global {
+  // 擴充 Window 介面
+  interface Window {
+    __APP_CONFIG__: {
+      apiUrl: string;
+      version: string;
+      features: string[];
+    };
+    gtag: (...args: any[]) => void;
+  }
+
+  // 宣告全域函式
+  function structuredClone<T>(value: T): T;
+
+  // 宣告全域型別
+  type Nullable<T> = T | null | undefined;
+}
+
+// 現在可以在任何地方使用
+const config = window.__APP_CONFIG__;
+const value: Nullable<string> = null;
+```
+
+### 擴充內建型別
+
+```ts
+// 擴充 Array
+declare global {
+  interface Array<T> {
+    customFind(predicate: (item: T) => boolean): T | undefined;
+  }
+}
+
+// 擴充 String
+declare global {
+  interface String {
+    toKebabCase(): string;
+  }
+}
+
+// 注意：擴充內建型別要搭配實際的 prototype 實作
+// 否則執行時會報錯
+```
+
+<Callout type="warning" title="謹慎擴充全域型別">
+全域型別擴充會影響整個專案。過度使用可能造成命名衝突和維護困難。建議只在必要時使用，例如宣告環境變數或第三方腳本注入的全域物件。
+</Callout>
+
+## 模組擴充（Module Augmentation）
+
+模組擴充允許你為已有的模組添加新的型別定義：
+
+```ts
+// 擴充第三方模組
+// express-augmentation.d.ts
+import 'express';
+
+declare module 'express' {
+  interface Request {
+    user?: {
+      id: string;
+      name: string;
+      role: 'admin' | 'user';
+    };
+    sessionId?: string;
+  }
+}
+
+// 現在 Express 的 Request 會包含 user 和 sessionId
+// import { Request } from 'express';
+// function handler(req: Request) {
+//   req.user?.name;  // 型別安全
+// }
+```
+
+```ts
+// 擴充 React Router
+declare module 'react-router-dom' {
+  interface RouteObject {
+    meta?: {
+      title: string;
+      requireAuth: boolean;
+    };
+  }
+}
+
+// 擴充 Axios
+import 'axios';
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    retry?: boolean;
+    retryCount?: number;
+  }
+}
+```
+
+## 第三方型別（@types/*）
+
+DefinitelyTyped 是最大的 TypeScript 型別定義儲存庫：
+
+```bash
+# 安裝第三方型別
+npm install --save-dev @types/lodash
+npm install --save-dev @types/node
+npm install --save-dev @types/react
+npm install --save-dev @types/express
+
+# 查詢是否有可用型別
+npm search @types/library-name
+```
+
+### 型別解析順序
+
+TypeScript 按以下順序尋找型別定義：
+
+```ts
+// 1. 套件自帶的型別（package.json 中的 "types" 或 "typings" 欄位）
+//    例如：axios、zod、date-fns 自帶 .d.ts
+
+// 2. @types/* 套件
+//    例如：@types/lodash、@types/react
+
+// 3. tsconfig.json 中的 typeRoots 和 paths
+
+// 4. 專案中的 .d.ts 檔案
+```
+
+```json
+// package.json — 自帶型別的套件
+{
+  "name": "my-library",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts"
+}
+```
+
+### 處理沒有型別的套件
+
+```ts
+// 方案一：建立本地宣告檔
+// src/types/untyped-lib.d.ts
+declare module 'untyped-lib' {
+  export function doThing(x: string): number;
+  export default class Client {
+    constructor(options: { url: string });
+    fetch<T>(path: string): Promise<T>;
+  }
+}
+
+// 方案二：快速宣告（不建議長期使用）
+declare module 'untyped-lib';
+// 這會讓所有匯入都變成 any 型別
+
+// 方案三：使用 // @ts-ignore 或 // @ts-expect-error
+// @ts-expect-error — 下一行的型別錯誤是預期的
+import something from 'untyped-lib';
+```
+
+## Ambient Declarations
+
+Ambient declarations 是不需要匯入就能在全域使用的宣告：
+
+```ts
+// ambient.d.ts
+// 不需要 import/export，自動成為全域可用
+
+// 全域列舉
+declare const enum Direction {
+  Up = 'UP',
+  Down = 'DOWN',
+  Left = 'LEFT',
+  Right = 'RIGHT',
+}
+
+// 全域介面
+interface AppConfig {
+  env: string;
+  port: number;
+  debug: boolean;
+}
+
+// 注意：ambient 宣告檔不能包含任何 import/export
+// 一旦加入 import/export，就變成模組檔案
+// 需要用 declare global { } 來宣告全域型別
+```
+
+### 腳本 vs 模組
+
+```ts
+// 腳本模式（沒有 import/export）
+// — 所有宣告自動成為全域
+
+declare const myGlobal: string;  // 全域可用
+
+// 模組模式（有 import/export）
+// — 需要 declare global 才能宣告全域
+
+import { Something } from './somewhere';
+
+declare global {
+  const myGlobal: string;  // 這樣才是全域
+}
+
+export {};  // 確保是模組
+```
+
+## 型別匯出策略
+
+設計良好的型別匯出能提升 API 的可用性：
+
+```ts
+// models/user.ts
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+export type UserRole = 'admin' | 'editor' | 'viewer';
+
+export type CreateUserInput = Omit<User, 'id'>;
+export type UpdateUserInput = Partial<CreateUserInput>;
+
+// 匯出所有相關型別，讓消費者能完整使用
+```
+
+### 集中匯出（Public API）
+
+```ts
+// models/index.ts — 公開 API
+export type { User, UserRole, CreateUserInput, UpdateUserInput } from './user';
+export type { Post, PostStatus } from './post';
+export type { Comment } from './comment';
+
+// 內部型別不匯出
+// InternalCache、_PrivateHelper 等留在各自模組內
+```
+
+## Barrel Files 型別匯出
+
+Barrel file 是一個重新匯出多個模組內容的 `index.ts` 檔案：
+
+```ts
+// components/index.ts（Barrel file）
+export { Button } from './Button';
+export type { ButtonProps } from './Button';
+export { Input } from './Input';
+export type { InputProps } from './Input';
+export { Modal } from './Modal';
+export type { ModalProps } from './Modal';
+
+// 使用端可以一行匯入
+import { Button, Input, Modal } from '@/components';
+import type { ButtonProps, InputProps } from '@/components';
+```
+
+### Barrel File 的注意事項
+
+```ts
+// 小心效能問題！
+// Barrel file 可能導致整個目錄被打包
+
+// 不好：匯入一個元件，卻載入了所有元件
+import { Button } from '@/components';
+
+// 較好：直接匯入（tree-shaking 更有效）
+import { Button } from '@/components/Button';
+
+// 建議：
+// - 小型專案用 barrel file 方便管理
+// - 大型專案考慮直接匯入以優化打包
+// - 配合 sideEffects: false 幫助 tree-shaking
+```
+
+<Callout type="tip" title="package.json exports 欄位">
+現代套件可以使用 `package.json` 的 `exports` 欄位精確控制哪些路徑可以被匯入，搭配 `typesVersions` 或 `exports` 中的 `types` 條件來指定型別定義位置。
+</Callout>
+
+## tsconfig 中的型別相關設定
+
+```json
+{
+  "compilerOptions": {
+    // 型別檔案搜尋根目錄
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+
+    // 只載入指定的 @types 套件
+    "types": ["node", "jest"],
+    // 不指定則載入 typeRoots 下的所有套件
+
+    // 路徑別名
+    "paths": {
+      "@/*": ["./src/*"],
+      "@types/*": ["./src/types/*"]
+    },
+
+    // 模組解析策略
+    "moduleResolution": "bundler",  // 或 "node", "node16"
+
+    // 宣告檔產生
+    "declaration": true,
+    "declarationDir": "./dist/types",
+    "declarationMap": true,  // 產生 .d.ts.map（方便 IDE 跳轉到原始碼）
+
+    // 匯入相關
+    "esModuleInterop": true,     // 允許 import x from 'cjs-module'
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,    // 允許匯入 .json 檔案
+    "isolatedModules": true       // 確保每個檔案可獨立轉譯
+  }
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模組匯入匯出的 JS 運行時行為"
+  defaultJS={`// === 模組系統的 JS 運行時行為 ===
+// 注意：TypeScript 的型別資訊在編譯後完全消失
+
+// 1. 模擬模組系統
+console.log('=== 模組系統模擬 ===');
+
+const moduleRegistry = {};
+
+function defineModule(name, factory) {
+  const module = { exports: {} };
+  factory(module.exports, (dep) => moduleRegistry[dep]?.exports);
+  moduleRegistry[name] = module;
+  console.log('已註冊模組:', name);
+}
+
+// 定義 math 模組
+defineModule('math', (exports) => {
+  exports.add = (a, b) => a + b;
+  exports.multiply = (a, b) => a * b;
+  exports.PI = 3.14159;
+});
+
+// 定義 utils 模組
+defineModule('utils', (exports, require) => {
+  const math = require('math');
+  exports.circleArea = (r) => math.multiply(math.PI, math.multiply(r, r));
+});
+
+// 使用模組
+const math = moduleRegistry['math'].exports;
+const utils = moduleRegistry['utils'].exports;
+console.log('add(2, 3):', math.add(2, 3));
+console.log('圓面積(r=5):', utils.circleArea(5).toFixed(2));
+
+// 2. 型別在運行時消失的展示
+console.log('\\n=== 型別在運行時消失 ===');
+
+// TypeScript 原始碼：
+// interface User { name: string; age: number; }
+// const user: User = { name: 'Alice', age: 30 };
+
+// 編譯後的 JavaScript（型別完全消失）：
+const user = { name: 'Alice', age: 30 };
+console.log('user:', user);
+console.log('typeof user:', typeof user);
+// 沒有任何方式在運行時檢查 "User" 介面
+
+// 3. type-only import 的效果
+console.log('\\n=== type-only import 效果 ===');
+
+// TypeScript:
+// import type { User } from './models';  // 編譯後完全消失
+// import { fetchUser } from './api';      // 保留
+
+// 模擬編譯結果
+const compiledImports = {
+  'import { fetchUser } from "./api"': '保留（值匯入）',
+  'import type { User } from "./models"': '移除（型別匯入）',
+  'import { Component, type Props } from "react"': 'Component 保留, Props 移除',
+};
+
+Object.entries(compiledImports).forEach(([code, result]) => {
+  console.log(code);
+  console.log('  → ' + result);
+});
+
+// 4. declare 的效果 — 不產生任何 JS 程式碼
+console.log('\\n=== declare 不產生程式碼 ===');
+
+// TypeScript:
+// declare const __DEV__: boolean;
+// declare function gtag(...args: any[]): void;
+
+// 編譯後：完全沒有輸出！
+// declare 只是告訴 TypeScript 這些東西存在
+// 實際的值需要由其他方式提供（例如 webpack DefinePlugin）
+
+// 模擬 webpack DefinePlugin
+const defines = { __DEV__: true, __VERSION__: '1.0.0' };
+console.log('DefinePlugin 注入:', defines);
+console.log('__DEV__:', defines.__DEV__);
+
+// 5. Barrel file re-export
+console.log('\\n=== Barrel File Re-export ===');
+
+// components/Button.js
+defineModule('components/Button', (exports) => {
+  exports.Button = (props) => '< Button: ' + props.label + ' >';
+});
+
+// components/Input.js
+defineModule('components/Input', (exports) => {
+  exports.Input = (props) => '< Input: ' + props.placeholder + ' >';
+});
+
+// components/index.js (Barrel file)
+defineModule('components', (exports, require) => {
+  const button = require('components/Button');
+  const input = require('components/Input');
+  exports.Button = button.Button;
+  exports.Input = input.Input;
+});
+
+// 使用 barrel file
+const components = moduleRegistry['components'].exports;
+console.log(components.Button({ label: 'Submit' }));
+console.log(components.Input({ placeholder: '請輸入...' }));`}
+/>
+
+## 面試重點整理
+
+1. **type-only import** — `import type { X }` 確保型別匯入不產生執行時期程式碼，對 tree-shaking 和循環依賴有幫助
+2. **.d.ts 檔案** — 純型別宣告檔，描述 JavaScript 程式碼的「形狀」，不包含實作
+3. **declare 關鍵字** — 告訴 TypeScript 某個值/函式/類別存在但不由當前檔案定義
+4. **模組 vs 腳本** — 有 `import`/`export` 的檔案是模組，否則是腳本；腳本中的宣告自動全域可用
+5. **declare global** — 在模組檔案中宣告全域型別的方式
+6. **模組擴充** — 用 `declare module 'xxx'` 為已有模組添加新的型別定義
+7. **@types/*** — DefinitelyTyped 提供的第三方型別套件，TypeScript 自動識別
+8. **Barrel files** — 集中匯出的 `index.ts`，方便使用但可能影響 tree-shaking 效能
+9. **isolatedModules** — 使用 esbuild/Vite 等工具時需啟用，要求 re-export 型別時使用 `export type`
+10. **typeRoots vs types** — `typeRoots` 指定搜尋目錄，`types` 限制載入哪些 @types 套件
+
+## 下一篇預告
+
+下一篇我們將學習 **tsconfig 與最佳實踐**，深入了解 TypeScript 編譯器配置的每個選項，以及在不同專案類型中的推薦配置和效能優化策略。

@@ -1,0 +1,458 @@
+# Git 工作流程模型
+
+選擇正確的 Git 工作流程對團隊協作效率有決定性的影響。不同的專案規模、發布頻率與團隊組成，適合不同的分支策略。本篇將完整介紹主流的 Git 工作流程模型，幫助你做出最佳選擇。
+
+## 為什麼需要工作流程？
+
+沒有明確工作流程的團隊，常會遇到以下問題：
+
+- 分支命名混亂，不知道哪些是功能開發、哪些是修復
+- 直接在 `main` 分支上開發，導致不穩定的程式碼進入生產環境
+- 多人同時修改同一分支，頻繁發生衝突
+- 無法清楚追溯哪個版本部署到了生產環境
+
+工作流程的本質就是一套團隊約定，規範分支的建立、命名、合併與刪除方式。
+
+## Git Flow
+
+Git Flow 由 Vincent Driessen 於 2010 年提出，是最早被廣泛採用的分支模型，適合有計劃性發布週期的專案。
+
+### 分支結構
+
+Git Flow 定義了五種分支類型：
+
+| 分支類型 | 命名慣例 | 來源 | 合併目標 | 生命週期 |
+|----------|----------|------|----------|----------|
+| main | `main` | — | — | 永久 |
+| develop | `develop` | main | — | 永久 |
+| feature | `feature/*` | develop | develop | 臨時 |
+| release | `release/*` | develop | main + develop | 臨時 |
+| hotfix | `hotfix/*` | main | main + develop | 臨時 |
+
+### main 與 develop
+
+- **main**：永遠反映生產環境的狀態，每次合併都應該打上版本標籤
+- **develop**：整合所有開發中的功能，是下一次發布的準備分支
+
+### feature 分支
+
+```bash
+# 從 develop 建立功能分支
+git checkout develop
+git checkout -b feature/user-authentication
+
+# 開發完成後合併回 develop
+git checkout develop
+git merge --no-ff feature/user-authentication
+git branch -d feature/user-authentication
+```
+
+`--no-ff` 強制產生合併提交，保留功能分支的完整歷史。
+
+### release 分支
+
+當 `develop` 累積了足夠的功能準備發布時：
+
+```bash
+# 從 develop 建立 release 分支
+git checkout develop
+git checkout -b release/1.2.0
+
+# 在 release 分支上只做 bug 修復和版本號更新
+# ...修復與調整...
+
+# 完成後合併到 main 和 develop
+git checkout main
+git merge --no-ff release/1.2.0
+git tag -a v1.2.0 -m "Release 1.2.0"
+
+git checkout develop
+git merge --no-ff release/1.2.0
+git branch -d release/1.2.0
+```
+
+### hotfix 分支
+
+生產環境的緊急修復：
+
+```bash
+# 從 main 建立 hotfix 分支
+git checkout main
+git checkout -b hotfix/fix-login-crash
+
+# 修復完成後合併到 main 和 develop
+git checkout main
+git merge --no-ff hotfix/fix-login-crash
+git tag -a v1.2.1 -m "Hotfix 1.2.1"
+
+git checkout develop
+git merge --no-ff hotfix/fix-login-crash
+git branch -d hotfix/fix-login-crash
+```
+
+<Callout type="info" title="Git Flow 的適用場景">
+Git Flow 適合有明確版本發布週期的專案，例如桌面應用、手機 App、套裝軟體等。對於持續部署（CD）的 Web 應用來說，Git Flow 可能過於繁瑣。
+</Callout>
+
+## GitHub Flow
+
+GitHub Flow 是由 GitHub 推廣的極簡工作流，只有一條 `main` 分支加上功能分支，非常適合持續部署的 Web 專案。
+
+### 核心原則
+
+1. `main` 分支隨時都是可部署的
+2. 從 `main` 開新分支進行任何工作
+3. 經常推送到遠端同名分支
+4. 建立 Pull Request 進行 Code Review
+5. 通過 Review 並合併到 `main` 後立即部署
+
+### 完整流程
+
+```bash
+# 1. 從 main 建立功能分支
+git checkout main
+git pull origin main
+git checkout -b feature/add-search
+
+# 2. 開發並定期推送
+git add .
+git commit -m "feat: implement search UI"
+git push -u origin feature/add-search
+
+# 3. 在 GitHub 上建立 PR
+# 4. 團隊成員 Code Review
+# 5. 合併到 main（通常在 GitHub 上操作）
+# 6. 自動部署（CI/CD）
+
+# 7. 清理已合併的分支
+git checkout main
+git pull origin main
+git branch -d feature/add-search
+```
+
+### 優缺點
+
+**優點**：
+- 流程簡單，學習成本低
+- 適合持續部署
+- PR 促進了 Code Review 文化
+
+**缺點**：
+- 沒有預發布環境的概念
+- 不適合需要同時維護多個版本的專案
+
+## Trunk-Based Development
+
+Trunk-Based Development（TBD）是一種強調頻繁整合的開發模式，所有開發者都直接在 `main`（trunk）上工作，或使用極短命的分支。
+
+### 核心理念
+
+- 分支存活時間不超過 1-2 天
+- 每天至少整合一次到 `main`
+- 使用 Feature Flags 控制未完成功能的可見性
+- 強調自動化測試作為品質保障
+
+### 操作方式
+
+```bash
+# 短命分支（建議不超過一天）
+git checkout main
+git pull
+git checkout -b short-lived/update-header
+
+# 快速完成改動
+git add .
+git commit -m "update header layout"
+git push origin short-lived/update-header
+
+# 立即建立 PR 並合併
+# ...合併後刪除分支
+```
+
+### Feature Flags 搭配
+
+```js
+// 使用 Feature Flag 控制未完成功能
+if (featureFlags.isEnabled('new-checkout-flow')) {
+  renderNewCheckout();
+} else {
+  renderOldCheckout();
+}
+```
+
+這讓不完整的程式碼也能安全地合併到 `main`，因為它不會對使用者可見。
+
+<Callout type="tip" title="Trunk-Based Development 的前提">
+TBD 要求團隊有良好的自動化測試覆蓋率和 CI/CD 基礎設施。沒有這些保障，頻繁合併到 main 可能會引入不穩定的程式碼。適合成熟度較高的團隊。
+</Callout>
+
+## GitLab Flow
+
+GitLab Flow 結合了 Git Flow 的穩定性和 GitHub Flow 的簡潔性，引入了「環境分支」的概念。
+
+### 環境分支模型
+
+```
+main ──→ pre-production ──→ production
+```
+
+- **main**：開發整合分支
+- **pre-production**：預發布測試環境
+- **production**：正式生產環境
+
+### 操作流程
+
+```bash
+# 功能開發流程與 GitHub Flow 相同
+git checkout -b feature/new-dashboard
+# ...開發...
+# 建立 MR 合併到 main
+
+# 準備發布時，將 main 合併到 pre-production
+git checkout pre-production
+git merge main
+
+# 測試通過後，合併到 production
+git checkout production
+git merge pre-production
+git tag -a v2.1.0 -m "Release 2.1.0"
+```
+
+### 版本分支模型
+
+對於需要維護多個版本的專案（如開源套件），GitLab Flow 使用版本分支：
+
+```bash
+# 維護多個版本
+main          # 最新開發版
+stable-3.x    # 3.x 穩定版
+stable-2.x    # 2.x 穩定版
+
+# 修復要同時套用到舊版本時
+git checkout stable-2.x
+git cherry-pick <fix-commit-hash>
+```
+
+## 各流程比較與適用場景
+
+| 特性 | Git Flow | GitHub Flow | Trunk-Based | GitLab Flow |
+|------|----------|-------------|-------------|-------------|
+| 複雜度 | 高 | 低 | 低 | 中 |
+| 長期分支數 | 2（main + develop） | 1（main） | 1（main） | 2-3 |
+| 發布模式 | 計劃性發布 | 持續部署 | 持續部署 | 兩者皆可 |
+| 適合團隊規模 | 中大型 | 小中型 | 成熟團隊 | 中大型 |
+| 版本維護 | 好 | 不適合 | 不適合 | 好 |
+| 學習成本 | 高 | 低 | 低（但需配套） | 中 |
+
+### 如何選擇？
+
+- **開源專案或 SaaS 產品**：GitHub Flow — 簡單直覺、持續部署
+- **手機 App 或桌面軟體**：Git Flow — 有明確版本週期
+- **高頻部署的成熟團隊**：Trunk-Based Development — 最短整合週期
+- **需要多環境部署**：GitLab Flow — 環境分支提供額外保障
+
+## 語意化版本（Semantic Versioning）
+
+無論使用哪種工作流，版本號的管理都很重要。語意化版本（SemVer）是最廣泛採用的版本號規範。
+
+### 版本號格式
+
+```
+MAJOR.MINOR.PATCH
+主版本.次版本.修補版本
+```
+
+- **MAJOR**（主版本）：有不相容的 API 變更
+- **MINOR**（次版本）：新增向下相容的功能
+- **PATCH**（修補版本）：向下相容的問題修正
+
+### 實際範例
+
+```bash
+# 初始開發版本
+v0.1.0
+
+# 新增功能（向下相容）
+v0.1.0 → v0.2.0
+
+# 修復 bug
+v0.2.0 → v0.2.1
+
+# 第一個穩定版
+v1.0.0
+
+# API 重大變更
+v1.2.3 → v2.0.0
+```
+
+### 預發布版本
+
+```bash
+v2.0.0-alpha.1    # 內部測試
+v2.0.0-beta.1     # 公開測試
+v2.0.0-rc.1       # 候選發布版
+v2.0.0            # 正式版
+```
+
+### 搭配 Git 標籤
+
+```bash
+# 建立附註標籤
+git tag -a v1.2.0 -m "Release version 1.2.0"
+
+# 推送標籤到遠端
+git push origin v1.2.0
+
+# 推送所有標籤
+git push origin --tags
+
+# 列出所有標籤
+git tag -l "v1.*"
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模擬不同工作流的分支模型"
+  defaultJS={`// 模擬不同 Git 工作流的分支模型
+function simulateWorkflow(name, steps) {
+  console.log('='.repeat(50));
+  console.log('工作流：' + name);
+  console.log('='.repeat(50));
+
+  const branches = {};
+  let commitCount = 0;
+
+  function createBranch(name, from) {
+    branches[name] = { commits: [...(branches[from]?.commits || [])], active: true };
+    console.log('[分支] 從 ' + (from || 'init') + ' 建立 ' + name);
+  }
+
+  function commit(branch, msg) {
+    commitCount++;
+    const id = 'c' + commitCount;
+    branches[branch].commits.push(id);
+    console.log('[提交] ' + branch + ': ' + id + ' - ' + msg);
+  }
+
+  function merge(from, to) {
+    const newCommits = branches[from].commits.filter(
+      c => !branches[to].commits.includes(c)
+    );
+    branches[to].commits.push(...newCommits);
+    console.log('[合併] ' + from + ' → ' + to + ' (' + newCommits.length + ' 個提交)');
+  }
+
+  function deleteBranch(name) {
+    branches[name].active = false;
+    console.log('[刪除] 分支 ' + name);
+  }
+
+  function tag(branch, version) {
+    console.log('[標籤] ' + branch + ' → ' + version);
+  }
+
+  function showState() {
+    console.log('  活躍分支：' +
+      Object.entries(branches)
+        .filter(([, b]) => b.active)
+        .map(([n, b]) => n + '(' + b.commits.length + ')')
+        .join(', ')
+    );
+  }
+
+  steps({ createBranch, commit, merge, deleteBranch, tag, showState });
+  console.log('');
+}
+
+// === Git Flow ===
+simulateWorkflow('Git Flow', ({ createBranch, commit, merge, deleteBranch, tag, showState }) => {
+  createBranch('main');
+  commit('main', '初始提交');
+  createBranch('develop', 'main');
+
+  createBranch('feature/login', 'develop');
+  commit('feature/login', '實作登入 UI');
+  commit('feature/login', '實作登入邏輯');
+  merge('feature/login', 'develop');
+  deleteBranch('feature/login');
+
+  createBranch('feature/search', 'develop');
+  commit('feature/search', '實作搜尋功能');
+  merge('feature/search', 'develop');
+  deleteBranch('feature/search');
+
+  createBranch('release/1.0', 'develop');
+  commit('release/1.0', '修復發布前 bug');
+  merge('release/1.0', 'main');
+  tag('main', 'v1.0.0');
+  merge('release/1.0', 'develop');
+  deleteBranch('release/1.0');
+
+  showState();
+});
+
+// === GitHub Flow ===
+simulateWorkflow('GitHub Flow', ({ createBranch, commit, merge, deleteBranch, tag, showState }) => {
+  createBranch('main');
+  commit('main', '初始提交');
+
+  createBranch('feature/login', 'main');
+  commit('feature/login', '實作登入功能');
+  console.log('[PR] feature/login → main (Code Review)');
+  merge('feature/login', 'main');
+  deleteBranch('feature/login');
+  console.log('[部署] main 自動部署到生產環境');
+
+  createBranch('fix/typo', 'main');
+  commit('fix/typo', '修正錯字');
+  console.log('[PR] fix/typo → main (Code Review)');
+  merge('fix/typo', 'main');
+  deleteBranch('fix/typo');
+  console.log('[部署] main 自動部署到生產環境');
+
+  showState();
+});
+
+// === Trunk-Based Development ===
+simulateWorkflow('Trunk-Based Dev', ({ createBranch, commit, merge, deleteBranch, showState }) => {
+  createBranch('main');
+  commit('main', '初始提交');
+
+  // 短命分支（< 1天）
+  createBranch('short/header', 'main');
+  commit('short/header', '更新 header');
+  merge('short/header', 'main');
+  deleteBranch('short/header');
+  console.log('[部署] main 自動部署');
+
+  // 直接在 main 提交（小改動）
+  commit('main', 'fix: 修正 CSS 排版');
+  console.log('[部署] main 自動部署');
+
+  createBranch('short/footer', 'main');
+  commit('short/footer', '更新 footer (behind feature flag)');
+  merge('short/footer', 'main');
+  deleteBranch('short/footer');
+  console.log('[部署] main 自動部署（Feature Flag 控制）');
+
+  showState();
+});
+
+console.log('='.repeat(50));
+console.log('選擇建議：');
+console.log('  SaaS / Web App → GitHub Flow');
+console.log('  App / 套裝軟體 → Git Flow');
+console.log('  成熟高頻部署團隊 → Trunk-Based Dev');
+console.log('  多環境部署 → GitLab Flow');`}
+/>
+
+## 面試重點整理
+
+1. **Git Flow**：有 main/develop 兩條永久分支，加上 feature/release/hotfix 三種臨時分支；適合有版本週期的專案
+2. **GitHub Flow**：只有 main + 功能分支，所有改動通過 PR 合併；適合持續部署的 Web 應用
+3. **Trunk-Based Development**：所有人直接在 main 上工作，搭配 Feature Flags 與短命分支；需要成熟的 CI/CD 與測試基礎
+4. **語意化版本**：`MAJOR.MINOR.PATCH`，分別對應不相容變更、新功能、問題修正
+5. **如何選擇工作流**：根據團隊規模、發布頻率、專案類型來決定，沒有一體適用的方案
+
+下一篇我們將學習 Git 的復原與修正操作，包括 reset、revert、stash 等重要指令，幫助你在出錯時從容應對。

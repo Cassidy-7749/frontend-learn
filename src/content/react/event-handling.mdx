@@ -1,0 +1,798 @@
+# 事件處理
+
+React 實作了一套跨瀏覽器的**合成事件**（SyntheticEvent）系統，提供一致的事件處理 API。了解 React 事件處理的運作方式，以及它與原生 DOM 事件的差異，對於建構互動式應用至關重要。
+
+## React 合成事件系統
+
+React 的事件系統是對原生 DOM 事件的一層包裝，稱為合成事件（SyntheticEvent）：
+
+```jsx
+function ClickDemo() {
+  const handleClick = (event) => {
+    // event 是 SyntheticEvent，不是原生 Event
+    console.log(event);                    // SyntheticBaseEvent
+    console.log(event.nativeEvent);        // 原生 MouseEvent
+    console.log(event.type);               // 'click'
+    console.log(event.target);             // 被點擊的 DOM 元素
+    console.log(event.currentTarget);      // 綁定事件的 DOM 元素
+  };
+
+  return <button onClick={handleClick}>點擊我</button>;
+}
+```
+
+### 為什麼要用合成事件？
+
+1. **跨瀏覽器一致性** — 抹平不同瀏覽器的事件行為差異
+2. **效能最佳化** — React 使用事件委派，將事件統一綁定在根節點
+3. **與虛擬 DOM 整合** — 事件處理與 React 的更新機制緊密配合
+
+### 合成事件的屬性
+
+合成事件物件包含所有標準的 W3C 事件屬性：
+
+```jsx
+function EventProperties({ }) {
+  const handleClick = (e) => {
+    // 通用屬性
+    e.type;          // 事件類型（'click'）
+    e.target;        // 觸發事件的元素
+    e.currentTarget; // 綁定事件的元素
+    e.timeStamp;     // 事件發生時間
+    e.bubbles;       // 是否冒泡
+
+    // 滑鼠事件屬性
+    e.clientX;       // 滑鼠 X 座標（相對於視窗）
+    e.clientY;       // 滑鼠 Y 座標
+    e.button;        // 哪個滑鼠按鍵
+    e.altKey;        // 是否按住 Alt
+
+    // 鍵盤事件屬性
+    e.key;           // 按鍵值（'Enter', 'a' 等）
+    e.keyCode;       // 按鍵碼（已棄用，建議用 key）
+    e.ctrlKey;       // 是否按住 Ctrl
+    e.shiftKey;      // 是否按住 Shift
+  };
+}
+```
+
+## 事件命名慣例
+
+React 事件使用 **camelCase** 命名，與 HTML 的全小寫命名不同：
+
+```jsx
+// HTML 原生事件
+<button onclick="handleClick()">點擊</button>
+<input onchange="handleChange()" />
+<form onsubmit="handleSubmit()">
+
+// React 事件（camelCase）
+<button onClick={handleClick}>點擊</button>
+<input onChange={handleChange} />
+<form onSubmit={handleSubmit}>
+```
+
+### 常用事件對照表
+
+| 類別 | HTML 屬性 | React 屬性 |
+|------|----------|-----------|
+| 點擊 | `onclick` | `onClick` |
+| 變更 | `onchange` | `onChange` |
+| 提交 | `onsubmit` | `onSubmit` |
+| 鍵盤按下 | `onkeydown` | `onKeyDown` |
+| 鍵盤放開 | `onkeyup` | `onKeyUp` |
+| 滑鼠移入 | `onmouseenter` | `onMouseEnter` |
+| 滑鼠移出 | `onmouseleave` | `onMouseLeave` |
+| 焦點 | `onfocus` | `onFocus` |
+| 失焦 | `onblur` | `onBlur` |
+| 捲動 | `onscroll` | `onScroll` |
+
+<Callout type="info" title="React 的 onChange 與 HTML 的 onchange 差異">
+HTML 的 `onchange` 在 input 失去焦點時才觸發，但 React 的 `onChange` 在每次值改變時都會觸發（行為更接近 HTML 的 `oninput`）。這是 React 刻意的設計，讓受控元件的狀態同步更加即時。
+</Callout>
+
+## 事件處理函式綁定
+
+### 基本綁定方式
+
+```jsx
+function EventBinding() {
+  // 方式一：定義具名函式
+  const handleClick = () => {
+    console.log('clicked');
+  };
+
+  // 方式二：行內箭頭函式（適合簡單邏輯）
+  return (
+    <div>
+      <button onClick={handleClick}>具名函式</button>
+      <button onClick={() => console.log('inline')}>行內函式</button>
+    </div>
+  );
+}
+```
+
+### 常見錯誤
+
+```jsx
+function CommonMistakes() {
+  const handleClick = () => {
+    console.log('clicked');
+  };
+
+  return (
+    <div>
+      {/* ❌ 錯誤：立即執行了函式，而不是傳遞引用 */}
+      <button onClick={handleClick()}>錯誤</button>
+
+      {/* ✅ 正確：傳遞函式引用 */}
+      <button onClick={handleClick}>正確</button>
+
+      {/* ✅ 正確：用箭頭函式包裹 */}
+      <button onClick={() => handleClick()}>也正確</button>
+    </div>
+  );
+}
+```
+
+### 效能考量：行內函式
+
+```jsx
+function ListItem({ id, name, onSelect }) {
+  // ⚠️ 每次渲染都會建立新的函式
+  return (
+    <li onClick={() => onSelect(id)}>
+      {name}
+    </li>
+  );
+}
+
+// 最佳化方案：使用 useCallback
+function ListItem({ id, name, onSelect }) {
+  const handleClick = useCallback(() => {
+    onSelect(id);
+  }, [id, onSelect]);
+
+  return <li onClick={handleClick}>{name}</li>;
+}
+```
+
+## preventDefault 與 stopPropagation
+
+### event.preventDefault()
+
+阻止瀏覽器的預設行為：
+
+```jsx
+function Form() {
+  const handleSubmit = (e) => {
+    e.preventDefault(); // 阻止表單預設的頁面重新整理
+    console.log('表單提交');
+    // 改用 AJAX 送出
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input type="text" name="username" />
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+
+function CustomLink() {
+  const handleClick = (e) => {
+    e.preventDefault(); // 阻止連結的預設跳轉
+    console.log('自訂導航邏輯');
+  };
+
+  return <a href="/page" onClick={handleClick}>自訂連結</a>;
+}
+```
+
+**注意**：在 React 中，你不能透過 `return false` 來阻止預設行為（在原生 HTML 中可以），必須明確呼叫 `preventDefault()`。
+
+### event.stopPropagation()
+
+阻止事件冒泡：
+
+```jsx
+function NestedClicks() {
+  return (
+    <div onClick={() => console.log('外層 div')}>
+      <button onClick={(e) => {
+        e.stopPropagation(); // 阻止冒泡到外層 div
+        console.log('按鈕');
+      }}>
+        點擊我
+      </button>
+    </div>
+  );
+  // 只會印出 '按鈕'，不會印出 '外層 div'
+}
+```
+
+### 捕獲階段事件
+
+React 也支援在捕獲階段處理事件，在事件名稱後加 `Capture`：
+
+```jsx
+function CaptureDemo() {
+  return (
+    <div
+      onClickCapture={() => console.log('1. 外層捕獲')}
+      onClick={() => console.log('4. 外層冒泡')}
+    >
+      <button
+        onClickCapture={() => console.log('2. 按鈕捕獲')}
+        onClick={() => console.log('3. 按鈕冒泡')}
+      >
+        點擊
+      </button>
+    </div>
+  );
+  // 輸出順序：1 → 2 → 3 → 4
+}
+```
+
+## 事件池（Event Pooling）— React 16 及更早
+
+<Callout type="warning" title="React 17+ 已移除事件池">
+以下內容僅適用於 React 16 及更早版本。React 17 已移除事件池機制，合成事件物件不再被回收複用。但理解這段歷史有助於閱讀舊程式碼。
+</Callout>
+
+在 React 16 中，合成事件物件會被放入「事件池」中回收複用，事件處理完成後所有屬性會被清空：
+
+```jsx
+// React 16 的問題
+function OldReactHandler() {
+  const handleClick = (e) => {
+    console.log(e.type); // 'click' — 同步存取沒問題
+
+    setTimeout(() => {
+      console.log(e.type); // null — 事件已被回收！
+    }, 0);
+  };
+
+  // 解決方案：呼叫 e.persist() 保留事件
+  const handleClickFixed = (e) => {
+    e.persist(); // 從事件池中移除，不會被回收
+    setTimeout(() => {
+      console.log(e.type); // 'click' — 正常存取
+    }, 0);
+  };
+}
+
+// React 17+ 不需要擔心這個問題
+function ModernHandler() {
+  const handleClick = (e) => {
+    setTimeout(() => {
+      console.log(e.type); // 'click' — 正常運作
+    }, 0);
+  };
+}
+```
+
+## 傳遞參數給事件處理器
+
+```jsx
+function TodoList({ todos, onDelete, onToggle }) {
+  return (
+    <ul>
+      {todos.map(todo => (
+        <li key={todo.id}>
+          <span>{todo.text}</span>
+
+          {/* 方式一：箭頭函式（最常見） */}
+          <button onClick={() => onDelete(todo.id)}>
+            刪除
+          </button>
+
+          {/* 方式二：箭頭函式同時取得 event */}
+          <button onClick={(e) => onToggle(todo.id, e)}>
+            切換
+          </button>
+
+          {/* 方式三：bind（較少使用） */}
+          <button onClick={onDelete.bind(null, todo.id)}>
+            刪除
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### 使用 data 屬性傳遞參數
+
+另一種避免行內函式的方法：
+
+```jsx
+function ButtonGroup({ items, onSelect }) {
+  const handleClick = (e) => {
+    const id = e.currentTarget.dataset.id;
+    onSelect(id);
+  };
+
+  return (
+    <div>
+      {items.map(item => (
+        <button key={item.id} data-id={item.id} onClick={handleClick}>
+          {item.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+## React 的事件委派機制
+
+React 並不會將事件監聽器綁定在每個 DOM 元素上，而是使用**事件委派**：
+
+```jsx
+// 你寫的 JSX
+<div>
+  <button onClick={handleClick1}>按鈕 1</button>
+  <button onClick={handleClick2}>按鈕 2</button>
+  <button onClick={handleClick3}>按鈕 3</button>
+</div>
+
+// React 實際上只在根節點（React 17+: root container）綁定一個事件監聽器
+// React 16: 綁定在 document 上
+// React 17+: 綁定在 createRoot 的容器元素上
+```
+
+### React 17 事件委派的變更
+
+```
+React 16:
+document ← 所有事件都綁定在這裡
+  └── #root
+        └── <App>
+              └── <button onClick={...}>
+
+React 17+:
+document
+  └── #root ← 事件綁定在 root 容器上
+        └── <App>
+              └── <button onClick={...}>
+```
+
+這個改變讓多個 React 版本可以共存在同一頁面中，也讓 React 與其他框架的事件處理不會互相干擾。
+
+## 表單事件處理模式
+
+### 受控元件（Controlled Component）
+
+元件的值由 React state 控制：
+
+```jsx
+function ControlledForm() {
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    role: 'user',
+    agree: false
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log('提交資料：', formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        name="username"
+        value={formData.username}
+        onChange={handleChange}
+        placeholder="使用者名稱"
+      />
+
+      <input
+        name="email"
+        type="email"
+        value={formData.email}
+        onChange={handleChange}
+        placeholder="電子郵件"
+      />
+
+      <select name="role" value={formData.role} onChange={handleChange}>
+        <option value="user">使用者</option>
+        <option value="admin">管理員</option>
+      </select>
+
+      <label>
+        <input
+          name="agree"
+          type="checkbox"
+          checked={formData.agree}
+          onChange={handleChange}
+        />
+        同意條款
+      </label>
+
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+```
+
+### 非受控元件（Uncontrolled Component）
+
+使用 `ref` 直接存取 DOM 元素的值：
+
+```jsx
+function UncontrolledForm() {
+  const usernameRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log('使用者名稱：', usernameRef.current.value);
+    console.log('檔案：', fileRef.current.files[0]);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* defaultValue 設定初始值，但不控制後續變化 */}
+      <input ref={usernameRef} defaultValue="預設值" />
+
+      {/* 檔案輸入只能用非受控方式 */}
+      <input ref={fileRef} type="file" />
+
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+```
+
+### 受控 vs 非受控比較
+
+| 特性 | 受控元件 | 非受控元件 |
+|------|---------|-----------|
+| 值的來源 | React state | DOM 本身 |
+| 即時驗證 | 容易 | 困難 |
+| 動態禁用送出 | 容易 | 困難 |
+| 強制格式化 | 容易 | 困難 |
+| 程式碼量 | 較多 | 較少 |
+| 使用場景 | 大多數情況 | 檔案上傳、快速原型 |
+
+## 鍵盤事件處理
+
+```jsx
+function KeyboardDemo() {
+  const handleKeyDown = (e) => {
+    switch (e.key) {
+      case 'Enter':
+        console.log('按下 Enter');
+        break;
+      case 'Escape':
+        console.log('按下 Escape');
+        break;
+      case 'ArrowUp':
+        e.preventDefault(); // 防止捲動
+        console.log('按下上方向鍵');
+        break;
+    }
+
+    // 組合鍵
+    if (e.ctrlKey && e.key === 's') {
+      e.preventDefault(); // 防止瀏覽器儲存
+      console.log('Ctrl + S：自訂儲存');
+    }
+  };
+
+  return (
+    <input
+      onKeyDown={handleKeyDown}
+      placeholder="在此輸入..."
+    />
+  );
+}
+```
+
+## 互動式事件處理展示
+
+<CodePlayground
+  title="事件處理互動展示"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 16px; }
+.demo-section { background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 10px 0; }
+.demo-section h3 { margin-top: 0; color: #333; }
+.click-area { width: 100%; padding: 24px; background: #e3f2fd; border: 2px dashed #90caf9; border-radius: 8px; text-align: center; cursor: pointer; transition: background 0.2s; margin: 8px 0; user-select: none; }
+.click-area:hover { background: #bbdefb; }
+.click-area:active { background: #90caf9; }
+input[type="text"] { width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; margin: 4px 0; }
+input[type="text"]:focus { border-color: #007bff; outline: none; }
+.event-log { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 150px; overflow-y: auto; margin-top: 8px; }
+.log-item { padding: 2px 0; border-bottom: 1px solid #333; }
+.log-click { color: #4fc3f7; }
+.log-key { color: #aed581; }
+.log-input { color: #ffb74d; }
+.log-mouse { color: #ce93d8; }
+.clear-btn { background: #dc3545; color: white; border: none; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; margin-top: 6px; }
+.counter { font-size: 24px; font-weight: bold; color: #007bff; }
+.key-display { display: inline-block; background: #333; color: #fff; padding: 4px 12px; border-radius: 4px; font-family: monospace; margin: 2px; font-size: 14px; }
+.coords { color: #666; font-size: 13px; }`}
+  defaultJS={`const { useState, useRef, useEffect } = React;
+var e = React.createElement;
+
+function App() {
+  var clickState = useState(0);
+  var clicks = clickState[0];
+  var setClicks = clickState[1];
+
+  var logState = useState([]);
+  var logs = logState[0];
+  var setLogs = logState[1];
+
+  var inputState = useState('');
+  var inputVal = inputState[0];
+  var setInputVal = inputState[1];
+
+  var keysState = useState([]);
+  var keys = keysState[0];
+  var setKeys = keysState[1];
+
+  var coordsState = useState({ x: 0, y: 0 });
+  var coords = coordsState[0];
+  var setCoords = coordsState[1];
+
+  var logRef = useRef(null);
+
+  useEffect(function() {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  function addLog(msg, type) {
+    setLogs(function(prev) {
+      var next = prev.concat([{ msg: msg, type: type, time: new Date().toLocaleTimeString() }]);
+      return next.length > 30 ? next.slice(-30) : next;
+    });
+  }
+
+  function handleClick(ev) {
+    setClicks(function(p) { return p + 1; });
+    addLog('Click! clientX=' + ev.clientX + ' clientY=' + ev.clientY, 'click');
+  }
+
+  function handleMouseMove(ev) {
+    setCoords({ x: ev.clientX, y: ev.clientY });
+  }
+
+  function handleInput(ev) {
+    var val = ev.target.value;
+    setInputVal(val);
+    addLog('Input onChange: "' + val + '"', 'input');
+  }
+
+  function handleKeyDown(ev) {
+    addLog('KeyDown: ' + ev.key + (ev.ctrlKey ? ' +Ctrl' : '') + (ev.shiftKey ? ' +Shift' : ''), 'key');
+    setKeys(function(prev) {
+      var next = [ev.key].concat(prev);
+      return next.slice(0, 8);
+    });
+    if (ev.key === 'Enter') {
+      addLog('Enter 送出! 值: "' + inputVal + '"', 'key');
+    }
+  }
+
+  function clearLogs() {
+    setLogs([]);
+    setClicks(0);
+    setKeys([]);
+    setInputVal('');
+  }
+
+  var colorMap = { click: 'log-click', key: 'log-key', input: 'log-input', mouse: 'log-mouse' };
+
+  return e('div', null,
+    e('h2', null, '事件處理互動展示'),
+
+    e('div', { className: 'demo-section' },
+      e('h3', null, '點擊事件'),
+      e('div', {
+        className: 'click-area',
+        onClick: handleClick,
+        onMouseMove: handleMouseMove
+      },
+        e('div', { className: 'counter' }, clicks + ' 次點擊'),
+        e('div', { className: 'coords' }, '滑鼠座標: (' + coords.x + ', ' + coords.y + ')')
+      )
+    ),
+
+    e('div', { className: 'demo-section' },
+      e('h3', null, '鍵盤與輸入事件'),
+      e('input', {
+        type: 'text',
+        value: inputVal,
+        onChange: handleInput,
+        onKeyDown: handleKeyDown,
+        placeholder: '在此輸入文字，觀察 onChange 和 onKeyDown...'
+      }),
+      keys.length > 0 ? e('div', { style: { marginTop: '8px' } },
+        e('span', { style: { fontSize: '13px', color: '#666' } }, '最近按鍵: '),
+        keys.map(function(k, i) {
+          return e('span', { key: i, className: 'key-display' }, k);
+        })
+      ) : null
+    ),
+
+    e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' } },
+      e('h3', { style: { margin: 0 } }, '事件日誌'),
+      e('button', { className: 'clear-btn', onClick: clearLogs }, '清除全部')
+    ),
+    e('div', { className: 'event-log', ref: logRef },
+      logs.length === 0
+        ? e('div', { style: { color: '#888' } }, '嘗試點擊上方區域或在輸入框打字...')
+        : logs.map(function(log, i) {
+            return e('div', { key: i, className: 'log-item ' + (colorMap[log.type] || '') },
+              '[' + log.time + '] ' + log.msg
+            );
+          })
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(e(App));`}
+  dependencies={["react"]}
+/>
+
+## 自訂事件模式
+
+React 沒有原生的自訂事件機制（如 Vue 的 `$emit`），但透過 props 回呼函式可以實現相同效果：
+
+```jsx
+// 子元件「發射」事件
+function SearchBar({ onSearch, onClear }) {
+  const [query, setQuery] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSearch(query); // 相當於發射事件
+  };
+
+  const handleClear = () => {
+    setQuery('');
+    onClear(); // 相當於發射事件
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={query} onChange={e => setQuery(e.target.value)} />
+      <button type="submit">搜尋</button>
+      <button type="button" onClick={handleClear}>清除</button>
+    </form>
+  );
+}
+
+// 父元件「監聽」事件
+function App() {
+  const [results, setResults] = useState([]);
+
+  const handleSearch = (query) => {
+    console.log('搜尋:', query);
+    // 執行搜尋邏輯
+  };
+
+  const handleClear = () => {
+    setResults([]);
+  };
+
+  return (
+    <div>
+      <SearchBar onSearch={handleSearch} onClear={handleClear} />
+      <ResultList results={results} />
+    </div>
+  );
+}
+```
+
+### 事件命名慣例
+
+```jsx
+// 慣例：事件 props 以 on 開頭，處理函式以 handle 開頭
+<SearchBar
+  onSearch={handleSearch}       // on + 事件名
+  onClear={handleClear}
+  onFilterChange={handleFilterChange}
+/>
+
+function SearchBar({ onSearch, onClear, onFilterChange }) {
+  // 內部的處理函式
+  const handleInputChange = (e) => {
+    // 內部邏輯...
+    onFilterChange(e.target.value); // 呼叫父元件的回呼
+  };
+}
+```
+
+## 常見的事件處理模式
+
+### 防抖（Debounce）搜尋
+
+```jsx
+function SearchInput({ onSearch }) {
+  const [query, setQuery] = useState('');
+  const timeoutRef = useRef(null);
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setQuery(value);
+
+    // 清除前一個計時器
+    clearTimeout(timeoutRef.current);
+
+    // 延遲 300ms 後才觸發搜尋
+    timeoutRef.current = setTimeout(() => {
+      onSearch(value);
+    }, 300);
+  };
+
+  // 清除計時器
+  useEffect(() => {
+    return () => clearTimeout(timeoutRef.current);
+  }, []);
+
+  return <input value={query} onChange={handleChange} placeholder="搜尋..." />;
+}
+```
+
+### 節流（Throttle）滾動
+
+```jsx
+function ScrollTracker() {
+  const [scrollY, setScrollY] = useState(0);
+  const ticking = useRef(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!ticking.current) {
+        requestAnimationFrame(() => {
+          setScrollY(window.scrollY);
+          ticking.current = false;
+        });
+        ticking.current = true;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return <div>捲動位置：{scrollY}px</div>;
+}
+```
+
+## 面試重點整理
+
+1. **什麼是 React 合成事件？** — React 對原生 DOM 事件的跨瀏覽器包裝層，提供一致的 API 介面。透過 `e.nativeEvent` 可以取得原生事件物件。
+
+2. **React 事件委派的運作方式？** — React 將所有事件統一綁定在根容器上（React 17+ 是 `createRoot` 的容器，React 16 是 `document`），而非每個 DOM 元素上。利用事件冒泡機制統一處理。
+
+3. **受控元件 vs 非受控元件？** — 受控元件的值由 React state 控制，每次變更透過 onChange 更新；非受控元件的值由 DOM 管理，透過 ref 讀取。大多數場景推薦受控元件。
+
+4. **為什麼不能 return false 阻止預設行為？** — React 的事件處理機制不支援 `return false`，必須明確呼叫 `e.preventDefault()`。
+
+5. **事件池（Event Pooling）是什麼？** — React 16 及更早版本的效能最佳化機制，事件物件在處理完後被回收。React 17 已移除此機制。
+
+6. **如何在事件處理器中傳遞額外參數？** — 使用箭頭函式包裹（`onClick={() => handler(id)}`）或 `bind` 方法（`onClick={handler.bind(null, id)}`）。
+
+7. **React 17 事件委派有什麼變化？** — 從 document 改為 root 容器，讓多個 React 實例能共存，避免事件衝突。
+
+---
+
+下一篇我們將學習 **useEffect 與副作用** — 了解如何處理資料獲取、訂閱、DOM 操作等副作用，以及 useEffect 的依賴陣列機制。

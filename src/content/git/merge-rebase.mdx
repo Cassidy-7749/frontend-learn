@@ -1,0 +1,419 @@
+# 合併策略：Merge 與 Rebase
+
+當多人在不同分支上開發時，最終都需要將修改整合在一起。Git 提供了兩種主要的整合方式：Merge 和 Rebase。理解它們的原理和適用場景，是團隊協作中避免混亂的關鍵。
+
+## 合併的基本概念
+
+在探討具體策略前，先理解一個核心觀念：合併的目的是將兩條（或多條）開發線的修改整合成一個統一的狀態。
+
+```bash
+# 典型場景：feature 分支要整合回 main
+#
+# C1 ← C2 ← C3 ← C5 (main)
+#            ↖ C4 ← C6 (feature)
+#
+# 目標：將 feature 的修改（C4, C6）整合到 main
+```
+
+## Fast-Forward Merge（快轉合併）
+
+當目標分支（如 main）在你建立分支後沒有任何新的 commit 時，Git 可以執行快轉合併——直接將分支指標向前移動。
+
+```bash
+# 情境：main 沒有新的 commit
+#
+# C1 ← C2 ← C3 (main)
+#               ↖ C4 ← C5 (feature)
+#
+# 執行 merge 後（fast-forward）：
+# C1 ← C2 ← C3 ← C4 ← C5 (main, feature)
+
+git switch main
+git merge feature
+# 輸出：Fast-forward
+```
+
+快轉合併的特點：
+
+- 不會產生額外的 merge commit
+- 歷史記錄是一條直線，非常乾淨
+- 但也因此看不出「曾經有分支」的事實
+
+```bash
+# 如果想保留分支歷史，可以禁用 fast-forward
+git merge --no-ff feature
+# 即使可以快轉，也會建立一個 merge commit
+
+# C1 ← C2 ← C3 ←──────── C6 (main)  ← merge commit
+#               ↖ C4 ← C5 ↗ (feature)
+```
+
+<Callout type="info" title="--no-ff 的實務價值">
+許多團隊會在合併 PR 時使用 `--no-ff`，因為 merge commit 能清楚標記「這組修改是從哪個分支合入的」，方便日後追溯。GitHub 的「Create a merge commit」選項就是 `--no-ff` 的行為。
+</Callout>
+
+## Three-Way Merge（三方合併）
+
+當兩個分支都有各自的新 commit 時，Git 無法快轉，必須執行三方合併。所謂「三方」是指：
+
+1. **共同祖先 commit**（merge base）
+2. **目前分支的最新 commit**
+3. **要合併進來的分支的最新 commit**
+
+```bash
+# 情境：main 和 feature 各自有新的 commit
+#
+# C1 ← C2 ← C3 ← C5 (main)
+#            ↖ C4 ← C6 (feature)
+#
+# C2 是共同祖先（merge base）
+
+git switch main
+git merge feature
+
+# 結果：產生一個新的 merge commit
+# C1 ← C2 ← C3 ← C5 ← C7 (main)  ← merge commit（有兩個 parent）
+#            ↖ C4 ← C6 ↗ (feature)
+```
+
+三方合併的過程：
+
+1. Git 找到兩個分支的共同祖先（C2）
+2. 比較 main（C5）相對於 C2 的變更
+3. 比較 feature（C6）相對於 C2 的變更
+4. 將兩組變更合併，如果同一位置有不同修改則產生衝突
+5. 建立一個有兩個 parent 的 merge commit（C7）
+
+```bash
+# 查看 merge commit 的 parent
+git log --oneline --graph
+# *   c7d8e9f (HEAD -> main) Merge branch 'feature'
+# |\
+# | * a1b2c3d 新增搜尋功能
+# | * d4e5f6g 新增搜尋 UI
+# * | f7g8h9i 修正首頁 bug
+# |/
+# * j0k1l2m 初始結構
+```
+
+## Rebase 原理
+
+Rebase（變基）的概念是：把你的分支上的 commit「拔起來」，重新「接」到目標分支的最新 commit 後面。本質上是「重新播放」你的 commit。
+
+```bash
+# 初始狀態：
+# C1 ← C2 ← C3 ← C5 (main)
+#            ↖ C4 ← C6 (feature)
+
+git switch feature
+git rebase main
+
+# Rebase 過程：
+# 1. 找到共同祖先 C2
+# 2. 暫存 feature 上的 commit（C4, C6）
+# 3. 將 feature 移到 main 的最新 commit（C5）
+# 4. 依序重新套用 C4, C6（產生新的 C4', C6'）
+
+# 結果：
+# C1 ← C2 ← C3 ← C5 (main) ← C4' ← C6' (feature)
+#
+# 注意：C4' 和 C6' 是全新的 commit（不同的 SHA-1）
+```
+
+Rebase 後，feature 分支的歷史變成了一條直線。接下來只需要在 main 上做一次快轉合併：
+
+```bash
+git switch main
+git merge feature  # Fast-forward!
+# C1 ← C2 ← C3 ← C5 ← C4' ← C6' (main, feature)
+```
+
+<Callout type="warning" title="Rebase 的黃金法則">
+**永遠不要對已經推送到公共遠端的 commit 執行 rebase**。Rebase 會產生全新的 commit（不同的 SHA-1），如果其他人已經基於原本的 commit 開發，這會造成歷史分歧和混亂。Rebase 只適用於尚未推送的本地 commit。
+</Callout>
+
+## Merge vs Rebase 完整比較
+
+### 歷史記錄的差異
+
+```bash
+# 使用 Merge 的歷史（保留真實的分支結構）
+# *   Merge branch 'feature-B'
+# |\
+# | * feat: B 功能完成
+# | * feat: B 功能開始
+# * |   Merge branch 'feature-A'
+# |\ \
+# | * | feat: A 功能完成
+# |/ /
+# * / fix: 修正 bug
+# |/
+# * 初始提交
+
+# 使用 Rebase 的歷史（線性、乾淨）
+# * feat: B 功能完成
+# * feat: B 功能開始
+# * feat: A 功能完成
+# * fix: 修正 bug
+# * 初始提交
+```
+
+### 比較表
+
+| 特性 | Merge | Rebase |
+|------|-------|--------|
+| 歷史記錄 | 保留完整分支結構 | 線性歷史 |
+| 額外 commit | 產生 merge commit | 不產生額外 commit |
+| 原始 commit | 保持不變 | 產生新的 commit（不同 SHA） |
+| 衝突處理 | 一次性解決 | 可能需要逐個 commit 解決 |
+| 適用場景 | 公共分支、保留歷史 | 個人分支、整理歷史 |
+| 安全性 | 不改寫歷史 | 改寫歷史（需謹慎） |
+
+### 使用時機建議
+
+```bash
+# 使用 Merge 的場景
+# - 合併 PR 到 main/develop
+# - 想保留完整的開發歷史
+# - 分支已經被推送且有其他人依賴
+
+# 使用 Rebase 的場景
+# - 更新功能分支（從 main 拉取最新變更）
+# - 整理本地 commit 再推送
+# - 保持乾淨的線性歷史
+
+# 推薦的工作流程（Rebase + Merge）：
+git switch feature-branch
+git rebase main              # 先 rebase，把分支接到最新的 main
+# 解決衝突（如果有的話）
+git switch main
+git merge --no-ff feature-branch  # 再用 --no-ff merge，保留 merge commit
+```
+
+<CodePlayground
+  title="模擬 Merge 與 Rebase 的差異"
+  defaultJS={`// 模擬 Merge 和 Rebase 的 commit 歷史差異
+class CommitGraph {
+  constructor(label) {
+    this.label = label;
+    this.commits = [];
+    this.nextId = 1;
+  }
+
+  addCommit(message, parents = []) {
+    const id = 'C' + this.nextId++;
+    this.commits.push({ id, message, parents });
+    return id;
+  }
+
+  display() {
+    console.log(\`\\n=== \${this.label} ===\`);
+    // 反向顯示（最新的在上面）
+    [...this.commits].reverse().forEach(c => {
+      const parentInfo = c.parents.length > 1
+        ? \` (merge: \${c.parents.join(' + ')})\`
+        : '';
+      console.log(\`  \${c.id}: \${c.message}\${parentInfo}\`);
+    });
+  }
+}
+
+// ========== 模擬 Merge ==========
+console.log('--- 場景：feature 分支要整合到 main ---');
+console.log('');
+console.log('初始狀態：');
+console.log('  C1 ← C2 ← C3 ← C5 (main)');
+console.log('         ↖ C4 ← C6 (feature)');
+
+const mergeGraph = new CommitGraph('使用 git merge 的結果');
+mergeGraph.addCommit('初始提交');
+mergeGraph.addCommit('新增基本結構');
+mergeGraph.addCommit('(main) 修正首頁 bug');
+mergeGraph.addCommit('(feature) 新增搜尋 UI');
+mergeGraph.addCommit('(main) 更新文件');
+mergeGraph.addCommit('(feature) 完成搜尋功能');
+mergeGraph.addCommit('Merge branch feature into main', ['C5', 'C6']);
+mergeGraph.display();
+
+console.log('');
+console.log('  圖形化：');
+console.log('  C1 ← C2 ← C3 ← C5 ← C7 (main) ← merge commit');
+console.log('         ↖ C4 ← C6 ↗ (feature)');
+console.log('  特點：保留分支結構，有 merge commit');
+
+// ========== 模擬 Rebase ==========
+const rebaseGraph = new CommitGraph('使用 git rebase 的結果');
+rebaseGraph.addCommit('初始提交');
+rebaseGraph.addCommit('新增基本結構');
+rebaseGraph.addCommit('修正首頁 bug');
+rebaseGraph.addCommit('更新文件');
+rebaseGraph.addCommit("新增搜尋 UI (rebased, 新SHA)");
+rebaseGraph.addCommit("完成搜尋功能 (rebased, 新SHA)");
+rebaseGraph.display();
+
+console.log('');
+console.log('  圖形化：');
+console.log("  C1 ← C2 ← C3 ← C5 ← C4' ← C6' (main)");
+console.log('  特點：線性歷史，沒有 merge commit');
+
+// ========== Squash Merge 模擬 ==========
+console.log('\\n\\n--- Squash Merge ---');
+const squashGraph = new CommitGraph('使用 git merge --squash 的結果');
+squashGraph.addCommit('初始提交');
+squashGraph.addCommit('新增基本結構');
+squashGraph.addCommit('修正首頁 bug');
+squashGraph.addCommit('更新文件');
+squashGraph.addCommit('feat: 完成搜尋功能（squashed from feature: C4+C6）');
+squashGraph.display();
+
+console.log('');
+console.log('  特點：feature 的多個 commit 被壓縮成一個');
+console.log('  適合：commit 很瑣碎（如 WIP、typo fix）時使用');
+
+// ========== 何時用哪種策略 ==========
+console.log('\\n\\n=== 策略選擇指南 ===');
+const strategies = [
+  { scenario: '合併 PR 到 main', recommendation: 'merge --no-ff 或 squash merge' },
+  { scenario: '更新 feature 分支', recommendation: 'rebase main' },
+  { scenario: '整理本地 commit', recommendation: 'rebase -i (interactive)' },
+  { scenario: 'Hotfix 合併', recommendation: 'merge（保留記錄）' },
+  { scenario: '個人分支整理後合入', recommendation: 'rebase + merge --no-ff' }
+];
+strategies.forEach(s => {
+  console.log(\`  \${s.scenario} → \${s.recommendation}\`);
+});`}
+/>
+
+## Squash Merge
+
+Squash merge 將功能分支上的所有 commit 壓縮成一個 commit 合入目標分支：
+
+```bash
+git switch main
+git merge --squash feature
+git commit -m "feat: 新增搜尋功能"
+
+# 原本 feature 上有多個 commit：
+# - WIP: 搜尋框 UI
+# - fix: 修正 typo
+# - 完成搜尋邏輯
+# - 調整樣式
+#
+# squash 後在 main 上只有一個乾淨的 commit
+```
+
+### Squash Merge 的優缺點
+
+**優點：**
+- main 的歷史非常乾淨，每個 commit 都是一個完整功能
+- 隱藏開發過程中的瑣碎 commit（WIP、typo fix 等）
+
+**缺點：**
+- 遺失詳細的開發歷史
+- 合併後的分支無法被 `git branch --merged` 偵測（因為 SHA 不同）
+- 如果功能很大，一個巨大的 commit 反而不好 review
+
+## Interactive Rebase（互動式 Rebase）
+
+`git rebase -i` 是整理 commit 歷史的強大工具，可以：
+
+```bash
+# 整理最近 4 個 commit
+git rebase -i HEAD~4
+
+# 會開啟編輯器，顯示：
+# pick a1b2c3d feat: 新增搜尋框
+# pick d4e5f6g WIP: 搜尋邏輯
+# pick h7i8j9k fix: 修正 typo
+# pick l0m1n2o feat: 完成搜尋功能
+
+# 可用的操作：
+# pick   — 保留 commit
+# reword — 保留 commit，但修改訊息
+# edit   — 保留 commit，暫停讓你修改
+# squash — 與上一個 commit 合併（保留訊息）
+# fixup  — 與上一個 commit 合併（丟棄訊息）
+# drop   — 刪除 commit
+
+# 整理後：
+# pick a1b2c3d feat: 新增搜尋框
+# squash d4e5f6g WIP: 搜尋邏輯
+# fixup h7i8j9k fix: 修正 typo
+# pick l0m1n2o feat: 完成搜尋功能
+```
+
+## Merge Commit 訊息規範
+
+當使用 `--no-ff` 合併時，merge commit 的訊息也應該有規範：
+
+```bash
+# 預設格式（通常夠用）
+Merge branch 'feature-login' into main
+
+# 更詳細的格式
+Merge branch 'feature-login' into main
+
+* 新增使用者登入頁面
+* 整合 OAuth 2.0（Google, GitHub）
+* 新增記住我功能
+* 包含完整的單元測試
+
+Resolves #123
+
+# GitHub PR 合併會自動產生
+Merge pull request #45 from user/feature-login
+
+feat: 新增使用者登入功能
+```
+
+## 常見工作流程範例
+
+### 功能開發的完整流程
+
+```bash
+# 1. 從最新的 main 建立功能分支
+git switch main
+git pull origin main
+git switch -c feature/search
+
+# 2. 開發並提交
+git add .
+git commit -m "feat: 新增搜尋框 UI"
+# ... 更多 commit ...
+
+# 3. 開發完成，先更新到最新的 main
+git fetch origin
+git rebase origin/main
+# 解決衝突（如果有的話）
+
+# 4. 推送並建立 PR
+git push -u origin feature/search
+# 在 GitHub 上建立 Pull Request
+
+# 5. PR 合併（通常在 GitHub UI 操作）
+# 選擇 "Create a merge commit" 或 "Squash and merge"
+
+# 6. 清理
+git switch main
+git pull origin main
+git branch -d feature/search
+```
+
+<Callout type="tip" title="git pull --rebase">
+`git pull` 預設是 `fetch + merge`。如果你想保持線性歷史，可以使用 `git pull --rebase`，它等同於 `fetch + rebase`。可以設定為預設行為：`git config --global pull.rebase true`。
+</Callout>
+
+## 面試重點整理
+
+- **Fast-forward merge**：目標分支沒有新 commit 時，直接移動指標，不產生 merge commit
+- **Three-way merge**：兩個分支都有新 commit，Git 比較三方（共同祖先、兩個分支最新 commit），產生 merge commit
+- **Rebase 原理**：將分支的 commit「拔起來」重新接到目標分支後面，產生全新的 commit（不同 SHA-1）
+- **Rebase 黃金法則**：不要對已推送的公共 commit 做 rebase
+- **Squash merge**：將多個 commit 壓縮成一個，適合 commit 瑣碎的情況
+- **--no-ff 的意義**：強制建立 merge commit，保留分支歷史
+- **pull --rebase**：拉取時用 rebase 取代 merge，保持線性歷史
+- **推薦流程**：功能分支先 rebase main，再用 --no-ff merge 回 main
+
+## 下一篇預告
+
+無論使用 Merge 還是 Rebase，都可能遇到**衝突（Conflict）**。下一篇我們將深入了解衝突是如何產生的、如何解讀衝突標記，以及各種解決衝突的技巧和預防策略。

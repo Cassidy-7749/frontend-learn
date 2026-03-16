@@ -1,0 +1,572 @@
+# infer 與型別推導
+
+TypeScript 的 `infer` 關鍵字是條件型別（Conditional Types）中最強大的工具之一，它允許我們在型別層面進行「模式匹配」，從複雜型別中提取出我們需要的部分。掌握 `infer` 是進入進階 TypeScript「型別體操」的必經之路。
+
+## infer 關鍵字基礎
+
+`infer` 只能在條件型別的 `extends` 子句中使用，用來宣告一個待推導的型別變數：
+
+```ts
+// 基本語法
+type MyType<T> = T extends SomePattern<infer U> ? U : DefaultType;
+```
+
+`infer U` 的意思是：「如果 T 符合這個模式，就把對應位置的型別推導出來，命名為 U」。
+
+```ts
+// 簡單範例：提取陣列元素型別
+type ElementOf<T> = T extends (infer E)[] ? E : never;
+
+type A = ElementOf<string[]>;    // string
+type B = ElementOf<number[]>;    // number
+type C = ElementOf<boolean>;     // never（不是陣列）
+```
+
+<Callout type="info" title="infer 的本質">
+你可以把 `infer` 想像成型別層面的「解構賦值」。就像 JavaScript 中 `const [first, ...rest] = arr` 能提取陣列元素一樣，`infer` 能從型別結構中提取出子型別。
+</Callout>
+
+## 在 Conditional Types 中使用 infer
+
+條件型別的完整語法是 `T extends U ? X : Y`，加上 `infer` 後，我們可以在條件判斷的同時捕獲型別：
+
+```ts
+// 判斷是否為函式型別，同時提取參數和回傳值
+type IsFunction<T> = T extends (...args: infer P) => infer R
+  ? { params: P; return: R }
+  : never;
+
+type Test1 = IsFunction<(x: number, y: string) => boolean>;
+// { params: [x: number, y: string]; return: boolean }
+
+type Test2 = IsFunction<string>;
+// never
+```
+
+### 多個 infer 同時使用
+
+你可以在同一個條件型別中使用多個 `infer`：
+
+```ts
+// 提取 Map 的 key 和 value 型別
+type MapTypes<T> = T extends Map<infer K, infer V>
+  ? { key: K; value: V }
+  : never;
+
+type M = MapTypes<Map<string, number>>;
+// { key: string; value: number }
+
+// 提取函式的第一個參數
+type FirstArg<T> = T extends (first: infer F, ...rest: any[]) => any
+  ? F
+  : never;
+
+type FA = FirstArg<(name: string, age: number) => void>;
+// string
+```
+
+## 推導函式回傳型別
+
+TypeScript 內建的 `ReturnType<T>` 工具型別就是用 `infer` 實作的：
+
+```ts
+// ReturnType 的實作原理
+type MyReturnType<T extends (...args: any) => any> =
+  T extends (...args: any) => infer R ? R : any;
+
+function getUser() {
+  return { name: 'Alice', age: 30 };
+}
+
+type User = MyReturnType<typeof getUser>;
+// { name: string; age: number }
+
+// 處理多載函式 — 只會推導最後一個簽名
+declare function overloaded(x: string): string;
+declare function overloaded(x: number): number;
+
+type OResult = MyReturnType<typeof overloaded>;
+// number（最後一個簽名的回傳型別）
+```
+
+### Parameters 型別
+
+同理，`Parameters<T>` 提取函式參數型別：
+
+```ts
+type MyParameters<T extends (...args: any) => any> =
+  T extends (...args: infer P) => any ? P : never;
+
+type Params = MyParameters<(a: string, b: number) => void>;
+// [a: string, b: number]
+
+// 搭配展開使用
+function wrapper<T extends (...args: any) => any>(
+  fn: T,
+  ...args: Parameters<T>
+): ReturnType<T> {
+  return fn(...args);
+}
+```
+
+## 推導 Promise 內部型別
+
+處理非同步程式碼時，經常需要「解包」Promise 取得內部型別：
+
+```ts
+// 基本版本
+type UnwrapPromise<T> = T extends Promise<infer U> ? U : T;
+
+type P1 = UnwrapPromise<Promise<string>>;  // string
+type P2 = UnwrapPromise<Promise<number>>;  // number
+type P3 = UnwrapPromise<string>;           // string（非 Promise 原樣返回）
+
+// 深層解包（處理 Promise<Promise<...>>）
+type DeepUnwrapPromise<T> = T extends Promise<infer U>
+  ? DeepUnwrapPromise<U>
+  : T;
+
+type P4 = DeepUnwrapPromise<Promise<Promise<Promise<boolean>>>>;
+// boolean
+
+// TypeScript 內建的 Awaited 就是這個概念
+type P5 = Awaited<Promise<Promise<string>>>;  // string
+```
+
+<Callout type="tip" title="Awaited 型別">
+從 TypeScript 4.5 開始，內建的 `Awaited<T>` 會遞迴地解包 Promise 和 thenable 物件。在實務中建議直接使用 `Awaited<T>` 而非自己實作。
+</Callout>
+
+## 推導陣列元素型別
+
+`infer` 可以靈活地從陣列/元組型別中提取各種資訊：
+
+```ts
+// 提取第一個元素
+type First<T extends any[]> = T extends [infer F, ...any[]] ? F : never;
+
+type F1 = First<[string, number, boolean]>;  // string
+type F2 = First<[]>;                          // never
+
+// 提取最後一個元素
+type Last<T extends any[]> = T extends [...any[], infer L] ? L : never;
+
+type L1 = Last<[string, number, boolean]>;   // boolean
+
+// 提取除了第一個之外的其餘元素
+type Tail<T extends any[]> = T extends [any, ...infer R] ? R : [];
+
+type T1 = Tail<[1, 2, 3]>;  // [2, 3]
+
+// 提取陣列長度
+type Length<T extends any[]> = T['length'];
+
+type Len = Length<[string, number]>;  // 2
+```
+
+### 元組操作
+
+```ts
+// 翻轉元組
+type Reverse<T extends any[]> = T extends [infer F, ...infer R]
+  ? [...Reverse<R>, F]
+  : [];
+
+type Rev = Reverse<[1, 2, 3]>;  // [3, 2, 1]
+
+// 扁平化一層
+type FlattenOnce<T extends any[]> = T extends [infer F, ...infer R]
+  ? F extends any[]
+    ? [...F, ...FlattenOnce<R>]
+    : [F, ...FlattenOnce<R>]
+  : [];
+
+type Flat = FlattenOnce<[[1, 2], [3], 4]>;  // [1, 2, 3, 4]
+```
+
+## 遞迴型別
+
+`infer` 搭配遞迴，可以處理深層巢狀結構：
+
+### 深層 Readonly
+
+```ts
+type DeepReadonly<T> = T extends Function
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+type Config = {
+  api: {
+    url: string;
+    headers: {
+      auth: string;
+    };
+  };
+  debug: boolean;
+};
+
+type ReadonlyConfig = DeepReadonly<Config>;
+// 所有層級的屬性都變成 readonly
+```
+
+### 深層 Partial
+
+```ts
+type DeepPartial<T> = T extends Function
+  ? T
+  : T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
+type PartialConfig = DeepPartial<Config>;
+// 所有層級的屬性都變成可選
+```
+
+### 深層 Required
+
+```ts
+type DeepRequired<T> = T extends Function
+  ? T
+  : T extends object
+    ? { [K in keyof T]-?: DeepRequired<T[K]> }
+    : T;
+```
+
+<Callout type="warning" title="遞迴深度限制">
+TypeScript 對遞迴型別有深度限制（通常約 50 層）。如果你的遞迴型別超過這個限制，會收到 `Type instantiation is excessively deep and possibly infinite` 錯誤。設計遞迴型別時要確保有正確的終止條件。
+</Callout>
+
+## 型別體操入門
+
+「型別體操」是指利用 TypeScript 的型別系統進行複雜的型別運算。以下是一些經典挑戰：
+
+### 實作 Pick
+
+```ts
+type MyPick<T, K extends keyof T> = {
+  [P in K]: T[P];
+};
+
+interface Todo {
+  title: string;
+  description: string;
+  completed: boolean;
+}
+
+type TodoPreview = MyPick<Todo, 'title' | 'completed'>;
+// { title: string; completed: boolean }
+```
+
+### 實作 Omit
+
+```ts
+type MyOmit<T, K extends keyof T> = {
+  [P in keyof T as P extends K ? never : P]: T[P];
+};
+
+type TodoInfo = MyOmit<Todo, 'completed'>;
+// { title: string; description: string }
+```
+
+### 實作 Readonly 轉 Mutable
+
+```ts
+type Mutable<T> = {
+  -readonly [K in keyof T]: T[K];
+};
+
+type Frozen = { readonly name: string; readonly age: number };
+type Thawed = Mutable<Frozen>;
+// { name: string; age: number }
+```
+
+### 字串轉聯合型別
+
+```ts
+type StringToUnion<S extends string> = S extends `${infer C}${infer Rest}`
+  ? C | StringToUnion<Rest>
+  : never;
+
+type U = StringToUnion<'hello'>;
+// 'h' | 'e' | 'l' | 'o'
+```
+
+## infer 與模板字面量型別
+
+TypeScript 4.1 引入的模板字面量型別搭配 `infer`，可以做字串層級的型別操作：
+
+```ts
+// 提取字串中的數字
+type ExtractNumber<S extends string> = S extends `${infer _}${infer N extends number}${infer _2}`
+  ? N
+  : never;
+
+// 將 kebab-case 轉為 camelCase
+type KebabToCamel<S extends string> = S extends `${infer Head}-${infer Tail}`
+  ? `${Head}${KebabToCamel<Capitalize<Tail>>}`
+  : S;
+
+type Camel = KebabToCamel<'get-user-name'>;
+// 'getUserName'
+
+// 移除字串前綴
+type RemovePrefix<S extends string, P extends string> =
+  S extends `${P}${infer Rest}` ? Rest : S;
+
+type NoPre = RemovePrefix<'onClick', 'on'>;
+// 'Click'
+
+// 提取路由參數
+type ExtractParams<S extends string> =
+  S extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractParams<Rest>
+    : S extends `${string}:${infer Param}`
+      ? Param
+      : never;
+
+type RouteParams = ExtractParams<'/user/:id/post/:postId'>;
+// 'id' | 'postId'
+```
+
+### 實用：事件名稱型別
+
+```ts
+type EventName<S extends string> = S extends `on${infer E}`
+  ? Uncapitalize<E>
+  : S;
+
+type E1 = EventName<'onClick'>;    // 'click'
+type E2 = EventName<'onMouseMove'>; // 'mouseMove'
+
+// 反向：從事件名產生處理器名
+type HandlerName<S extends string> = `on${Capitalize<S>}`;
+
+type H1 = HandlerName<'click'>;     // 'onClick'
+type H2 = HandlerName<'mouseMove'>; // 'onMouseMove'
+```
+
+## 實用 infer 模式
+
+以下是開發中常用的 `infer` 模式：
+
+### 提取泛型內部型別
+
+```ts
+// 通用的泛型解包
+type Unpack<T> =
+  T extends Promise<infer U> ? U :
+  T extends Array<infer U> ? U :
+  T extends Set<infer U> ? U :
+  T extends Map<any, infer U> ? U :
+  T extends (...args: any[]) => infer U ? U :
+  T;
+
+type U1 = Unpack<Promise<string>>;        // string
+type U2 = Unpack<number[]>;               // number
+type U3 = Unpack<Set<boolean>>;           // boolean
+type U4 = Unpack<Map<string, Date>>;      // Date
+type U5 = Unpack<() => RegExp>;           // RegExp
+type U6 = Unpack<string>;                 // string
+```
+
+### 建構函式參數提取
+
+```ts
+type ConstructorParams<T extends abstract new (...args: any) => any> =
+  T extends abstract new (...args: infer P) => any ? P : never;
+
+type InstanceOf<T extends abstract new (...args: any) => any> =
+  T extends abstract new (...args: any) => infer I ? I : never;
+
+class UserService {
+  constructor(private apiUrl: string, private timeout: number) {}
+}
+
+type CP = ConstructorParams<typeof UserService>;
+// [apiUrl: string, timeout: number]
+
+// 等同於內建的 ConstructorParameters<T> 和 InstanceType<T>
+```
+
+### 聯合型別轉交叉型別
+
+```ts
+// 這是一個經典的進階技巧
+type UnionToIntersection<U> =
+  (U extends any ? (x: U) => void : never) extends (x: infer I) => void
+    ? I
+    : never;
+
+type UI = UnionToIntersection<{ a: 1 } | { b: 2 }>;
+// { a: 1 } & { b: 2 }
+```
+
+## 效能考量
+
+型別體操雖然強大，但需要注意效能：
+
+### 避免過深的遞迴
+
+```ts
+// 不好：可能導致型別遞迴過深
+type BadDeepFlatten<T> = T extends (infer U)[]
+  ? BadDeepFlatten<U>
+  : T;
+
+// 較好：加入深度限制
+type DeepFlatten<T, Depth extends number[] = []> =
+  Depth['length'] extends 10  // 最多遞迴 10 層
+    ? T
+    : T extends (infer U)[]
+      ? DeepFlatten<U, [...Depth, 1]>
+      : T;
+```
+
+### 避免不必要的分布式條件型別
+
+```ts
+// 分布式條件型別會對聯合型別的每個成員都執行一次
+type ToArray<T> = T extends any ? T[] : never;
+type Distributed = ToArray<string | number>;
+// string[] | number[]（不是 (string | number)[]）
+
+// 用元組包裹避免分布
+type ToArrayNonDist<T> = [T] extends [any] ? T[] : never;
+type NonDistributed = ToArrayNonDist<string | number>;
+// (string | number)[]
+```
+
+### 善用型別快取
+
+```ts
+// TypeScript 會自動快取型別計算結果
+// 但過於複雜的型別運算仍會拖慢編輯器
+// 實務建議：
+// 1. 優先使用內建工具型別
+// 2. 複雜型別分步驟組合
+// 3. 適當使用 type alias 幫助快取
+
+type Step1<T> = /* 第一步處理 */  T extends object ? keyof T : never;
+type Step2<T> = /* 第二步處理 */  T extends string ? Uppercase<T> : T;
+type FinalType<T> = Step2<Step1<T>>;
+```
+
+## 互動範例
+
+<CodePlayground
+  title="用 JS 模擬型別推導概念"
+  defaultJS={`// === 用 JavaScript 模擬 infer 的型別推導概念 ===
+
+// 模式匹配 — 類似 infer 的概念
+function inferType(value) {
+  // 推導 Promise 內部值
+  if (value instanceof Promise) {
+    return value.then(v => {
+      console.log('Promise 內部型別:', typeof v, '值:', v);
+      return v;
+    });
+  }
+
+  // 推導陣列元素型別
+  if (Array.isArray(value)) {
+    const types = [...new Set(value.map(v => typeof v))];
+    console.log('陣列元素型別:', types.join(' | '));
+    return types;
+  }
+
+  // 推導函式回傳型別
+  if (typeof value === 'function') {
+    const result = value();
+    console.log('函式回傳型別:', typeof result, '值:', result);
+    return result;
+  }
+
+  console.log('基本型別:', typeof value);
+  return typeof value;
+}
+
+console.log('=== 型別推導模擬 ===');
+inferType(42);
+inferType('hello');
+inferType([1, 'two', true]);
+inferType(() => 100);
+
+// === 模擬元組操作 ===
+console.log('\\n=== 元組操作 ===');
+
+const tuple = ['hello', 42, true];
+
+// First
+console.log('First:', tuple[0]);
+
+// Last
+console.log('Last:', tuple[tuple.length - 1]);
+
+// Tail (除了第一個)
+const [, ...tail] = tuple;
+console.log('Tail:', tail);
+
+// Reverse
+console.log('Reverse:', [...tuple].reverse());
+
+// === 模擬字串型別操作 ===
+console.log('\\n=== 字串型別操作 ===');
+
+// kebab-case → camelCase
+function kebabToCamel(str) {
+  return str.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
+console.log('kebab → camel:', kebabToCamel('get-user-name'));
+
+// 提取路由參數
+function extractParams(route) {
+  const params = [];
+  route.replace(/:([^/]+)/g, (_, p) => params.push(p));
+  return params;
+}
+console.log('路由參數:', extractParams('/user/:id/post/:postId'));
+
+// 移除前綴
+function removePrefix(str, prefix) {
+  return str.startsWith(prefix) ? str.slice(prefix.length) : str;
+}
+console.log('移除前綴:', removePrefix('onClick', 'on'));
+
+// === 模擬深層操作 ===
+console.log('\\n=== 深層操作 ===');
+
+// DeepReadonly 模擬
+function deepFreeze(obj) {
+  Object.freeze(obj);
+  Object.values(obj).forEach(v => {
+    if (typeof v === 'object' && v !== null) deepFreeze(v);
+  });
+  return obj;
+}
+
+const config = { api: { url: 'https://api.example.com', headers: { auth: 'token' } } };
+deepFreeze(config);
+try {
+  config.api.url = 'changed';
+} catch (e) {
+  console.log('DeepReadonly 效果: 無法修改深層屬性');
+}
+console.log('config.api.url:', config.api.url);`}
+/>
+
+## 面試重點整理
+
+1. **infer 是什麼？** — `infer` 是條件型別中的型別推導工具，用來從型別模式中提取子型別
+2. **ReturnType 如何實作？** — `T extends (...args: any) => infer R ? R : any`，用 `infer R` 捕獲回傳型別
+3. **如何解包 Promise？** — `T extends Promise<infer U> ? U : T`，TypeScript 4.5+ 可用內建 `Awaited<T>`
+4. **分布式條件型別** — 裸型別參數在條件型別中會自動分布到聯合型別的每個成員，用 `[T]` 包裹可避免
+5. **遞迴型別的限制** — TypeScript 有約 50 層的遞迴深度限制，設計時需注意終止條件
+6. **聯合轉交叉** — `UnionToIntersection` 利用函式參數的逆變特性實現
+7. **模板字面量 + infer** — 可以做字串型別層級的模式匹配和轉換
+8. **型別效能** — 避免過深遞迴、善用型別別名快取、優先使用內建工具型別
+
+## 下一篇預告
+
+下一篇我們將進入 **TypeScript 與 React 實戰**，學習如何在 React 專案中充分利用 TypeScript 的型別系統，包括元件 Props 定義、Hook 泛型、事件型別處理等實務技巧。

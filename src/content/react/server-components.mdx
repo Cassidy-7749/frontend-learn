@@ -1,0 +1,680 @@
+# Server Components
+
+React Server Components（RSC）是 React 架構的一次根本性變革，將元件的執行環境從純客戶端擴展到伺服器端。透過 RSC，開發者可以在伺服器上執行元件邏輯、直接存取資料庫，並將最終的 UI 以串流方式傳送給客戶端，大幅減少 JavaScript bundle 大小與改善首次載入效能。
+
+## RSC 架構概念
+
+傳統的 React 應用（CSR 或 SSR）中，所有元件最終都會在客戶端執行。即使使用 SSR，伺服器只是預先渲染 HTML，客戶端仍需下載所有元件程式碼進行 hydration。
+
+RSC 引入了全新的架構思維：
+
+```
+傳統 SSR 流程：
+Server 渲染 HTML → Client 下載全部 JS → Hydration → 可互動
+
+RSC 流程：
+Server 執行 Server Components → 產生序列化 UI 描述
+→ Client 只下載 Client Components 的 JS → 選擇性 Hydration
+```
+
+RSC 的核心理念是**將元件分為兩類**：
+
+1. **Server Components** — 只在伺服器上執行，不包含在客戶端 bundle 中
+2. **Client Components** — 在客戶端執行（也可在伺服器上預渲染）
+
+```jsx
+// Server Component（預設）
+// 這段程式碼永遠不會被送到瀏覽器
+async function ArticlePage({ id }) {
+  const article = await db.query('SELECT * FROM articles WHERE id = ?', [id]);
+
+  return (
+    <article>
+      <h1>{article.title}</h1>
+      <ArticleContent content={article.body} />
+      <LikeButton articleId={id} /> {/* Client Component */}
+    </article>
+  );
+}
+```
+
+## Server Components vs Client Components
+
+理解兩者的差異是掌握 RSC 的關鍵：
+
+### Server Components 的特性
+
+```jsx
+// Server Component — 可以直接使用 async/await
+async function UserProfile({ userId }) {
+  // 直接存取資料庫 — 不需要 API 端點
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  // 可以使用只在伺服器端運行的套件
+  const formattedDate = format(user.createdAt, 'yyyy-MM-dd');
+
+  return (
+    <div>
+      <h2>{user.name}</h2>
+      <p>加入時間：{formattedDate}</p>
+    </div>
+  );
+}
+```
+
+Server Components **可以**：
+- 直接存取後端資源（資料庫、檔案系統、內部服務）
+- 使用 `async/await` 進行資料獲取
+- 引用大型套件而不影響客戶端 bundle
+- 保護敏感資訊（API 金鑰、資料庫連線字串）
+
+Server Components **不能**：
+- 使用 `useState`、`useEffect` 等 Hook
+- 使用瀏覽器 API（`window`、`document`、`localStorage`）
+- 處理使用者互動事件（`onClick`、`onChange` 等）
+- 使用 `createContext` 提供 Context
+
+### Client Components 的特性
+
+```jsx
+'use client';
+
+import { useState } from 'react';
+
+function LikeButton({ articleId }) {
+  const [liked, setLiked] = useState(false);
+  const [count, setCount] = useState(0);
+
+  const handleLike = async () => {
+    setLiked(!liked);
+    setCount(prev => liked ? prev - 1 : prev + 1);
+    await fetch(`/api/articles/${articleId}/like`, { method: 'POST' });
+  };
+
+  return (
+    <button onClick={handleLike}>
+      {liked ? '❤️' : '🤍'} {count}
+    </button>
+  );
+}
+```
+
+Client Components 就是我們熟悉的傳統 React 元件，擁有完整的互動能力。
+
+<Callout type="info" title="預設即 Server Component">
+在 RSC 架構中，所有元件預設都是 Server Component。只有明確標記 `'use client'` 的元件才是 Client Component。這與傳統 React 完全相反 — 過去所有元件預設都在客戶端執行。
+</Callout>
+
+## "use client" 與 "use server" 指令
+
+這兩個指令是 RSC 架構的邊界標記：
+
+### "use client"
+
+```jsx
+'use client'; // 必須放在檔案最頂端（imports 之前）
+
+import { useState, useEffect } from 'react';
+
+export function SearchBar() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (query.length > 2) {
+      fetch(`/api/search?q=${query}`)
+        .then(res => res.json())
+        .then(setResults);
+    }
+  }, [query]);
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="搜尋..."
+      />
+      <ul>
+        {results.map(r => <li key={r.id}>{r.title}</li>)}
+      </ul>
+    </div>
+  );
+}
+```
+
+### "use server"
+
+```jsx
+// actions.js
+'use server';
+
+// 這個檔案中的所有函式都是 Server Actions
+export async function createArticle(formData) {
+  const title = formData.get('title');
+  const content = formData.get('content');
+
+  await db.article.create({ data: { title, content } });
+  revalidatePath('/articles');
+}
+
+export async function deleteArticle(id) {
+  await db.article.delete({ where: { id } });
+  redirect('/articles');
+}
+```
+
+也可以在函式層級使用：
+
+```jsx
+// 在 Server Component 中定義內聯 Server Action
+async function ContactForm() {
+  async function submitForm(formData) {
+    'use server';
+    const email = formData.get('email');
+    const message = formData.get('message');
+    await sendEmail({ to: 'admin@example.com', from: email, body: message });
+  }
+
+  return (
+    <form action={submitForm}>
+      <input name="email" type="email" required />
+      <textarea name="message" required />
+      <button type="submit">送出</button>
+    </form>
+  );
+}
+```
+
+## Server / Client 邊界
+
+理解元件樹中的 Server/Client 邊界是避免錯誤的關鍵：
+
+```
+         ServerLayout (Server)
+        /                     \
+  ServerNav (Server)     MainContent (Server)
+      |                  /           \
+  Logo (Server)   ArticleList    InteractivePanel
+                   (Server)      (Client) ← 'use client' 邊界
+                      |           /        \
+               ArticleCard    Tabs(Client)  Chat(Client)
+                (Server)         |
+                              TabContent(Client)
+```
+
+### 邊界規則
+
+1. **Server Component 可以引入 Client Component**
+2. **Client Component 不能引入 Server Component**（但可以透過 `children` 組合）
+3. **一旦跨過 `'use client'` 邊界，其下所有子元件都是 Client Component**
+
+```jsx
+// ✅ 正確：透過 children 將 Server Component 傳入 Client Component
+// layout.jsx (Server Component)
+import { ClientSidebar } from './ClientSidebar';
+import { ServerContent } from './ServerContent';
+
+export default function Layout() {
+  return (
+    <ClientSidebar>
+      <ServerContent /> {/* 作為 children 傳入，仍在 Server 執行 */}
+    </ClientSidebar>
+  );
+}
+
+// ClientSidebar.jsx
+'use client';
+export function ClientSidebar({ children }) {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <div className={isOpen ? 'sidebar-open' : 'sidebar-closed'}>
+      <button onClick={() => setIsOpen(!isOpen)}>切換</button>
+      <main>{children}</main> {/* Server Component 在此渲染 */}
+    </div>
+  );
+}
+```
+
+<Callout type="warning" title="常見錯誤：在 Client Component 中引入 Server Component">
+```jsx
+'use client';
+import { ServerComponent } from './ServerComponent'; // ❌ 錯誤！
+```
+這不會報語法錯誤，但 `ServerComponent` 會被強制轉為 Client Component，失去所有 Server Component 的優勢。務必使用 `children` 或 `props` 模式來組合。
+</Callout>
+
+## 串流渲染（Streaming）
+
+RSC 結合 React 18 的 Suspense，實現了真正的串流渲染：
+
+```jsx
+import { Suspense } from 'react';
+
+async function DashboardPage() {
+  return (
+    <div>
+      <h1>儀表板</h1>
+
+      {/* 快速渲染的區塊 */}
+      <UserGreeting />
+
+      {/* 需要較久載入的區塊 — 獨立串流 */}
+      <Suspense fallback={<ChartSkeleton />}>
+        <AnalyticsChart /> {/* async Server Component */}
+      </Suspense>
+
+      <Suspense fallback={<TableSkeleton />}>
+        <RecentOrders /> {/* async Server Component */}
+      </Suspense>
+    </div>
+  );
+}
+
+// 這個元件可能需要 2 秒才能取得資料
+async function AnalyticsChart() {
+  const data = await fetchAnalytics(); // 耗時操作
+  return <Chart data={data} />;
+}
+```
+
+串流渲染的流程：
+
+```
+1. 伺服器開始處理請求
+2. 立即送出頁面外殼 + 快速區塊的 HTML
+3. 瀏覽器開始顯示部分內容（含 Skeleton loading）
+4. AnalyticsChart 資料就緒 → 串流送出這部分 HTML
+5. RecentOrders 資料就緒 → 串流送出這部分 HTML
+6. 頁面逐步完成渲染
+```
+
+這意味著使用者不需要等待最慢的資料查詢，就能看到頁面的大部分內容。
+
+## use API（React 19）
+
+React 19 引入了 `use` API，是一個可以在條件語句中使用的特殊 Hook：
+
+```jsx
+import { use, Suspense } from 'react';
+
+// use() 可以解包 Promise
+function UserProfile({ userPromise }) {
+  const user = use(userPromise); // 在 Promise 解析前會觸發 Suspense
+
+  return (
+    <div>
+      <h2>{user.name}</h2>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+
+// 父元件在 Server 端建立 Promise
+async function ProfilePage({ userId }) {
+  const userPromise = fetchUser(userId); // 不 await，傳遞 Promise
+
+  return (
+    <Suspense fallback={<div>載入中...</div>}>
+      <UserProfile userPromise={userPromise} />
+    </Suspense>
+  );
+}
+```
+
+`use` 也可以讀取 Context：
+
+```jsx
+import { use } from 'react';
+import { ThemeContext } from './ThemeContext';
+
+function ThemedButton({ showIcon }) {
+  // 可以在條件語句中使用（一般 Hook 不行）
+  if (showIcon) {
+    const theme = use(ThemeContext);
+    return <button style={{ color: theme.primary }}>🎨</button>;
+  }
+  return <button>普通按鈕</button>;
+}
+```
+
+## Server Actions
+
+Server Actions 讓 Client Component 可以直接呼叫伺服器端函式，無需手動建立 API 路由：
+
+```jsx
+// actions.js
+'use server';
+
+export async function addToCart(productId) {
+  const session = await getSession();
+  await db.cart.create({
+    data: { userId: session.userId, productId }
+  });
+  revalidatePath('/cart');
+}
+```
+
+```jsx
+// AddToCartButton.jsx
+'use client';
+
+import { useTransition } from 'react';
+import { addToCart } from './actions';
+
+export function AddToCartButton({ productId }) {
+  const [isPending, startTransition] = useTransition();
+
+  return (
+    <button
+      disabled={isPending}
+      onClick={() => {
+        startTransition(async () => {
+          await addToCart(productId);
+        });
+      }}
+    >
+      {isPending ? '處理中...' : '加入購物車'}
+    </button>
+  );
+}
+```
+
+### 搭配 useActionState（React 19）
+
+```jsx
+'use client';
+
+import { useActionState } from 'react';
+import { createPost } from './actions';
+
+function CreatePostForm() {
+  const [state, formAction, isPending] = useActionState(createPost, {
+    error: null,
+    success: false,
+  });
+
+  return (
+    <form action={formAction}>
+      <input name="title" required />
+      <textarea name="content" required />
+      {state.error && <p className="error">{state.error}</p>}
+      <button disabled={isPending}>
+        {isPending ? '發布中...' : '發布文章'}
+      </button>
+    </form>
+  );
+}
+```
+
+## RSC 與 Next.js App Router
+
+Next.js App Router 是目前最成熟的 RSC 實作：
+
+```
+app/
+├── layout.jsx          ← Server Component（共用佈局）
+├── page.jsx            ← Server Component（首頁）
+├── loading.jsx         ← 自動包裹 Suspense fallback
+├── error.jsx           ← 'use client'（錯誤邊界）
+├── articles/
+│   ├── page.jsx        ← Server Component
+│   ├── [id]/
+│   │   └── page.jsx    ← Server Component（動態路由）
+│   └── actions.js      ← 'use server'（Server Actions）
+└── components/
+    ├── Header.jsx      ← Server Component
+    └── SearchBar.jsx   ← 'use client'
+```
+
+### 資料獲取方式對比
+
+```jsx
+// Next.js App Router — Server Component 直接獲取資料
+// app/articles/page.jsx
+export default async function ArticlesPage() {
+  // 直接在元件中 fetch，Next.js 自動去重與快取
+  const articles = await fetch('https://api.example.com/articles', {
+    next: { revalidate: 60 } // ISR：60 秒後重新驗證
+  }).then(res => res.json());
+
+  return (
+    <ul>
+      {articles.map(article => (
+        <li key={article.id}>{article.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## 資料獲取模式（Async Component）
+
+RSC 支援多種資料獲取模式：
+
+### 循序獲取（Sequential）
+
+```jsx
+async function Page() {
+  const user = await fetchUser();        // 等待完成
+  const posts = await fetchPosts(user.id); // 再開始第二個請求
+
+  return <UserPosts user={user} posts={posts} />;
+}
+```
+
+### 平行獲取（Parallel）
+
+```jsx
+async function Page() {
+  // 同時發起兩個請求
+  const [user, posts] = await Promise.all([
+    fetchUser(),
+    fetchPosts()
+  ]);
+
+  return <Dashboard user={user} posts={posts} />;
+}
+```
+
+### 預載入模式（Preload Pattern）
+
+```jsx
+// 在需要資料之前就開始載入
+function preloadArticle(id) {
+  void fetchArticle(id); // 觸發快取但不等待結果
+}
+
+// 在路由層級預載入
+function ArticleLink({ id, title }) {
+  return (
+    <Link
+      href={`/article/${id}`}
+      onMouseEnter={() => preloadArticle(id)} // 滑鼠移入就開始載入
+    >
+      {title}
+    </Link>
+  );
+}
+```
+
+### 元件層級獨立獲取
+
+```jsx
+// 每個元件獨立獲取自己需要的資料
+async function Sidebar() {
+  const categories = await fetchCategories();
+  return <CategoryList categories={categories} />;
+}
+
+async function MainContent({ id }) {
+  const article = await fetchArticle(id);
+  return <Article data={article} />;
+}
+
+// 用 Suspense 包裹實現串流
+export default function ArticlePage({ params }) {
+  return (
+    <div className="layout">
+      <Suspense fallback={<SidebarSkeleton />}>
+        <Sidebar />
+      </Suspense>
+      <Suspense fallback={<ArticleSkeleton />}>
+        <MainContent id={params.id} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模擬 Server/Client Component 概念"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 16px; background: #f5f5f5; }
+.app { max-width: 600px; margin: 0 auto; }
+.component-box { border: 2px solid #ccc; border-radius: 8px; padding: 12px; margin: 8px 0; }
+.server { border-color: #22c55e; background: #f0fdf4; }
+.client { border-color: #3b82f6; background: #eff6ff; }
+.label { font-size: 12px; font-weight: bold; padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 8px; }
+.label-server { background: #22c55e; color: white; }
+.label-client { background: #3b82f6; color: white; }
+.info { background: white; padding: 8px; border-radius: 4px; margin: 4px 0; font-size: 13px; }
+.bundle-info { margin-top: 16px; padding: 12px; background: white; border-radius: 8px; border: 1px solid #ddd; }
+.bar { height: 20px; border-radius: 4px; margin: 4px 0; transition: width 0.5s; }
+.bar-full { background: #ef4444; }
+.bar-rsc { background: #22c55e; }
+button { padding: 6px 14px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; margin: 4px; background: white; }
+button:hover { background: #eee; }
+button.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+h3 { margin: 8px 0; }`}
+  defaultJS={`const { useState, createElement: h } = React;
+
+function ServerComponent(props) {
+  return h('div', { className: 'component-box server' },
+    h('span', { className: 'label label-server' }, 'Server Component'),
+    h('h3', null, props.name),
+    h('div', { className: 'info' }, '在伺服器端執行，不包含在客戶端 JS bundle 中'),
+    h('div', { className: 'info' }, '可直接存取資料庫：const data = await db.query(...)'),
+    props.children
+  );
+}
+
+function ClientComponent(props) {
+  var _useState = useState(0);
+  var count = _useState[0];
+  var setCount = _useState[1];
+
+  return h('div', { className: 'component-box client' },
+    h('span', { className: 'label label-client' }, 'Client Component'),
+    h('h3', null, props.name),
+    h('div', { className: 'info' }, '在瀏覽器端執行，可使用 useState、事件處理'),
+    h('button', { onClick: function() { setCount(count + 1); } },
+      '點擊互動: ' + count
+    ),
+    props.children
+  );
+}
+
+function BundleComparison() {
+  var _useState2 = useState('traditional');
+  var mode = _useState2[0];
+  var setMode = _useState2[1];
+
+  var traditional = { total: 100, label: '傳統 CSR：所有元件都在 bundle 中' };
+  var rsc = { total: 35, label: 'RSC：僅 Client Components 在 bundle 中' };
+  var current = mode === 'traditional' ? traditional : rsc;
+
+  return h('div', { className: 'bundle-info' },
+    h('h3', null, 'JS Bundle 大小比較'),
+    h('div', null,
+      h('button', {
+        className: mode === 'traditional' ? 'active' : '',
+        onClick: function() { setMode('traditional'); }
+      }, '傳統模式'),
+      h('button', {
+        className: mode === 'rsc' ? 'active' : '',
+        onClick: function() { setMode('rsc'); }
+      }, 'RSC 模式')
+    ),
+    h('p', null, current.label),
+    h('div', {
+      className: 'bar ' + (mode === 'traditional' ? 'bar-full' : 'bar-rsc'),
+      style: { width: current.total + '%' }
+    }),
+    h('p', null, 'Bundle 大小：' + current.total + '%')
+  );
+}
+
+function App() {
+  return h('div', { className: 'app' },
+    h('h2', null, 'RSC 元件樹結構模擬'),
+    h(ServerComponent, { name: 'PageLayout（伺服器佈局）' },
+      h(ServerComponent, { name: 'ArticleContent（文章內容）' }),
+      h(ClientComponent, { name: 'LikeButton（互動按鈕）' })
+    ),
+    h(BundleComparison, null)
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(h(App));`}
+  dependencies={["react"]}
+/>
+
+## 遷移考量
+
+從傳統 React 應用遷移到 RSC 架構需要注意：
+
+### 漸進式遷移策略
+
+```jsx
+// 第一步：識別純展示元件 → 保持為 Server Component（預設）
+// 第二步：標記需要互動的元件 → 加上 'use client'
+// 第三步：將資料獲取從 useEffect 移到 Server Component
+
+// 遷移前
+'use client';
+function ProductList() {
+  const [products, setProducts] = useState([]);
+  useEffect(() => {
+    fetch('/api/products').then(r => r.json()).then(setProducts);
+  }, []);
+  return <ul>{products.map(p => <li key={p.id}>{p.name}</li>)}</ul>;
+}
+
+// 遷移後
+// ProductList.jsx (Server Component，無需 'use client')
+async function ProductList() {
+  const products = await db.product.findMany();
+  return <ul>{products.map(p => <li key={p.id}>{p.name}</li>)}</ul>;
+}
+```
+
+### 需要注意的事項
+
+- **第三方套件相容性**：許多套件使用 `useEffect` 或瀏覽器 API，必須在 Client Component 中使用
+- **Context 限制**：Server Component 無法使用 `useContext`，需要透過 props 傳遞或在 Client Component 邊界處提供
+- **序列化限制**：從 Server 傳給 Client 的 props 必須是可序列化的（不能傳函式、Date 物件等）
+
+```jsx
+// ❌ 不可序列化的 props
+<ClientComponent onClick={() => {}} date={new Date()} />
+
+// ✅ 傳遞可序列化的值
+<ClientComponent actionType="click" dateString={date.toISOString()} />
+```
+
+## 面試重點整理
+
+1. **RSC 核心價值**：減少客戶端 JS bundle、直接存取後端資源、改善首次載入效能
+2. **Server vs Client**：Server Component 預設不含互動，Client Component 需標記 `'use client'`
+3. **邊界規則**：Client Component 不能直接引入 Server Component，但可透過 `children` 組合
+4. **串流渲染**：結合 Suspense 實現漸進式頁面載入
+5. **Server Actions**：`'use server'` 標記的函式可從客戶端直接呼叫
+6. **use API**：React 19 新增，可在條件語句中使用，解包 Promise 和讀取 Context
+7. **資料獲取**：優先在 Server Component 中進行，減少客戶端 waterfall
+8. **序列化限制**：Server → Client 的 props 必須是可序列化的
+
+下一篇我們將探討 React 常見的元件設計模式，學習如何建構更靈活、可複用的元件架構。

@@ -1,0 +1,589 @@
+# 聯合型別與交叉型別
+
+聯合型別（Union Types）與交叉型別（Intersection Types）是 TypeScript 型別系統中最強大的組合工具。透過 `|` 和 `&` 運算子，我們可以從既有型別組合出更精確的新型別。掌握這兩種機制，加上型別收窄（type narrowing）技巧，是寫出型別安全程式碼的關鍵。
+
+## Union Types（聯合型別）
+
+聯合型別使用 `|` 運算子，表示一個值可以是多個型別中的任意一個：
+
+```ts
+// 基本聯合型別
+let id: string | number;
+id = "abc-123";  // OK
+id = 42;         // OK
+// id = true;    // ❌ boolean 不在聯合中
+
+// 函式參數使用聯合型別
+function formatId(id: string | number): string {
+  // 需要型別收窄才能使用特定型別的方法
+  if (typeof id === "string") {
+    return id.toUpperCase();
+  }
+  return id.toString().padStart(6, "0");
+}
+
+console.log(formatId("abc"));  // "ABC"
+console.log(formatId(42));     // "000042"
+```
+
+在使用聯合型別時，TypeScript 只允許你存取所有型別**共有**的屬性和方法：
+
+```ts
+function getLength(value: string | number): number {
+  // value.length; // ❌ number 沒有 length 屬性
+  // value.toFixed(); // ❌ string 沒有 toFixed 方法
+
+  // 只能使用 string 和 number 共有的方法
+  return value.toString().length; // ✅ toString() 兩者都有
+}
+```
+
+## Intersection Types（交叉型別）
+
+交叉型別使用 `&` 運算子，將多個型別**合併**為一個型別，新型別同時擁有所有成員型別的屬性：
+
+```ts
+type HasName = {
+  name: string;
+};
+
+type HasAge = {
+  age: number;
+};
+
+type HasEmail = {
+  email: string;
+};
+
+// 交叉型別：同時擁有三個型別的所有屬性
+type Person = HasName & HasAge & HasEmail;
+
+const person: Person = {
+  name: "Alice",
+  age: 30,
+  email: "alice@example.com"
+};
+
+// 交叉型別用於「擴展」現有型別
+type ApiResponse<T> = {
+  data: T;
+  timestamp: number;
+} & {
+  status: "success" | "error";
+  message?: string;
+};
+
+const response: ApiResponse<Person> = {
+  data: person,
+  timestamp: Date.now(),
+  status: "success"
+};
+```
+
+### 交叉型別的衝突處理
+
+當兩個型別有同名但不同型別的屬性時，交叉後該屬性會變成 `never`：
+
+```ts
+type A = { value: string };
+type B = { value: number };
+
+type C = A & B;
+// C 的 value 型別為 string & number = never
+// 無法建立 C 的實例，因為 value 不可能同時是 string 和 number
+
+// 但如果型別相容則沒問題
+type D = { value: string | number };
+type E = { value: string };
+
+type F = D & E;
+// F 的 value 型別為 (string | number) & string = string
+```
+
+<Callout type="info" title="Union vs Intersection 的直覺理解">
+可以把 Union（`A | B`）想成集合的「聯集」——值可以是 A 或 B。把 Intersection（`A & B`）想成集合的「交集」——值必須同時滿足 A 和 B。但在型別成員（屬性）的角度上正好相反：Union 只能存取共有成員，Intersection 可以存取所有成員。
+</Callout>
+
+## 字面量型別（Literal Types）
+
+字面量型別將變數限制為特定的值，而非寬泛的型別：
+
+```ts
+// 字串字面量型別
+type Direction = "up" | "down" | "left" | "right";
+
+let dir: Direction = "up";     // OK
+// dir = "diagonal";           // ❌ 不是允許的值
+
+// 數字字面量型別
+type DiceRoll = 1 | 2 | 3 | 4 | 5 | 6;
+
+let roll: DiceRoll = 3;       // OK
+// roll = 7;                   // ❌
+
+// 布林字面量型別
+type True = true;
+
+// 範本字面量型別（Template Literal Types）
+type EventName = `on${string}`;
+let event: EventName = "onClick";  // OK
+// let event: EventName = "click"; // ❌ 必須以 "on" 開頭
+
+// 搭配聯合組合出精確的字串型別
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+type ApiEndpoint = `/api/${string}`;
+
+// const 與 let 的差異影響字面量推論
+const greeting = "hello";   // 型別為 "hello"（字面量型別）
+let message = "hello";      // 型別為 string（寬鬆推論）
+```
+
+### as const 與字面量型別
+
+```ts
+// 使用 as const 讓整個物件成為唯讀字面量
+const config = {
+  apiUrl: "https://api.example.com",
+  timeout: 5000,
+  retries: 3
+} as const;
+// config.apiUrl 的型別是 "https://api.example.com"（不是 string）
+// config.timeout 的型別是 5000（不是 number）
+
+// 陣列加上 as const 變成唯讀元組
+const colors = ["red", "green", "blue"] as const;
+// 型別為 readonly ["red", "green", "blue"]
+
+type Color = typeof colors[number];
+// Color = "red" | "green" | "blue"
+```
+
+## Discriminated Unions（辨識聯合型別）
+
+Discriminated Unions（也稱 Tagged Unions）是 TypeScript 中最重要的模式之一。透過一個共有的「辨識欄位」（discriminant property），讓 TypeScript 能精確判斷當前是哪個具體型別：
+
+```ts
+// 定義具有共同辨識欄位 'type' 的型別
+interface Circle {
+  type: "circle";
+  radius: number;
+}
+
+interface Rectangle {
+  type: "rectangle";
+  width: number;
+  height: number;
+}
+
+interface Triangle {
+  type: "triangle";
+  base: number;
+  height: number;
+}
+
+// 聯合型別
+type Shape = Circle | Rectangle | Triangle;
+
+// 使用辨識欄位進行型別收窄
+function getArea(shape: Shape): number {
+  switch (shape.type) {
+    case "circle":
+      // TypeScript 知道這裡 shape 是 Circle
+      return Math.PI * shape.radius ** 2;
+    case "rectangle":
+      // TypeScript 知道這裡 shape 是 Rectangle
+      return shape.width * shape.height;
+    case "triangle":
+      // TypeScript 知道這裡 shape 是 Triangle
+      return (shape.base * shape.height) / 2;
+  }
+}
+
+// 實際應用：API 回應處理
+interface SuccessResponse<T> {
+  status: "success";
+  data: T;
+}
+
+interface ErrorResponse {
+  status: "error";
+  error: string;
+  code: number;
+}
+
+type ApiResponse<T> = SuccessResponse<T> | ErrorResponse;
+
+function handleResponse(response: ApiResponse<string[]>) {
+  if (response.status === "success") {
+    console.log("資料:", response.data); // TypeScript 知道 data 存在
+  } else {
+    console.log("錯誤:", response.error); // TypeScript 知道 error 存在
+  }
+}
+```
+
+<Callout type="tip" title="Discriminated Union 的辨識欄位">
+辨識欄位必須是**字面量型別**（string、number 或 boolean literal），且在聯合的每個成員中都存在但值不同。最常見的命名慣例是 `type`、`kind` 或 `tag`。這個模式在 Redux action、狀態機、錯誤處理中非常常見。
+</Callout>
+
+## 型別收窄基礎
+
+型別收窄（Type Narrowing）是指 TypeScript 在特定的程式碼區塊中，根據控制流分析自動將寬泛的型別縮小為更精確的型別：
+
+### typeof 收窄
+
+```ts
+function processValue(value: string | number | boolean) {
+  if (typeof value === "string") {
+    // 此處 value 的型別為 string
+    console.log(value.toUpperCase());
+  } else if (typeof value === "number") {
+    // 此處 value 的型別為 number
+    console.log(value.toFixed(2));
+  } else {
+    // 此處 value 的型別為 boolean
+    console.log(value ? "真" : "假");
+  }
+}
+```
+
+### in 運算子收窄
+
+```ts
+interface Bird {
+  fly(): void;
+  layEggs(): void;
+}
+
+interface Fish {
+  swim(): void;
+  layEggs(): void;
+}
+
+function move(animal: Bird | Fish) {
+  if ("fly" in animal) {
+    // TypeScript 知道 animal 是 Bird
+    animal.fly();
+  } else {
+    // TypeScript 知道 animal 是 Fish
+    animal.swim();
+  }
+}
+```
+
+### instanceof 收窄
+
+```ts
+function formatDate(value: string | Date): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return new Date(value).toISOString();
+}
+```
+
+### 真值收窄（Truthiness Narrowing）
+
+```ts
+function printMessage(msg: string | null | undefined) {
+  if (msg) {
+    // msg 的型別為 string（排除了 null 和 undefined）
+    console.log(msg.toUpperCase());
+  }
+}
+```
+
+## Exhaustive Checking（窮盡檢查）
+
+利用 `never` 型別來確保所有聯合成員都被處理：
+
+```ts
+type Status = "pending" | "active" | "inactive" | "archived";
+
+function getStatusLabel(status: Status): string {
+  switch (status) {
+    case "pending":
+      return "待審核";
+    case "active":
+      return "啟用中";
+    case "inactive":
+      return "已停用";
+    case "archived":
+      return "已歸檔";
+    default:
+      // 如果有新的 status 值被加入但沒處理，
+      // 這裡會產生編譯錯誤
+      const _exhaustive: never = status;
+      return _exhaustive;
+  }
+}
+
+// 當新增 status 值時（例如 "deleted"），
+// TypeScript 會在 default 分支報錯，
+// 提醒你處理新的情況
+
+// 也可以用 assertNever 函式
+function assertNever(value: never): never {
+  throw new Error(`未處理的值: ${value}`);
+}
+
+function processStatus(status: Status) {
+  switch (status) {
+    case "pending": return "待審核";
+    case "active": return "啟用中";
+    case "inactive": return "已停用";
+    case "archived": return "已歸檔";
+    default: return assertNever(status);
+  }
+}
+```
+
+<Callout type="warning" title="為何 Exhaustive Checking 如此重要？">
+在大型專案中，當你新增一個聯合型別的成員時，exhaustive checking 會讓編譯器在所有沒處理到的 switch/case 中報錯。這比 runtime 才發現錯誤要安全得多，是 TypeScript 最強大的防禦性程式設計模式之一。
+</Callout>
+
+## Union 在函式參數中的應用
+
+聯合型別在函式參數中的常見模式：
+
+```ts
+// 模式一：接受多種輸入格式
+function parseDate(input: string | number | Date): Date {
+  if (input instanceof Date) return input;
+  if (typeof input === "number") return new Date(input);
+  return new Date(input);
+}
+
+// 模式二：選項物件中的聯合
+interface FetchOptions {
+  url: string;
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  body?: string | Record<string, unknown>;
+  headers?: Record<string, string>;
+}
+
+// 模式三：回傳值的聯合（表示可能的失敗）
+type Result<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string };
+
+function safeParse(json: string): Result<unknown> {
+  try {
+    return { ok: true, value: JSON.parse(json) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+const result = safeParse('{"name": "Alice"}');
+if (result.ok) {
+  console.log(result.value); // TypeScript 知道 value 存在
+} else {
+  console.log(result.error); // TypeScript 知道 error 存在
+}
+```
+
+## 常見模式與最佳實踐
+
+### 狀態機建模
+
+```ts
+type LoadingState = {
+  status: "loading";
+};
+
+type SuccessState<T> = {
+  status: "success";
+  data: T;
+};
+
+type ErrorState = {
+  status: "error";
+  error: string;
+};
+
+type AsyncState<T> = LoadingState | SuccessState<T> | ErrorState;
+
+function renderUI(state: AsyncState<string[]>) {
+  switch (state.status) {
+    case "loading":
+      return "載入中...";
+    case "success":
+      return state.data.join(", ");
+    case "error":
+      return `錯誤: ${state.error}`;
+  }
+}
+```
+
+### 事件系統
+
+```ts
+type ClickEvent = {
+  type: "click";
+  x: number;
+  y: number;
+};
+
+type KeyEvent = {
+  type: "keydown" | "keyup";
+  key: string;
+  ctrlKey: boolean;
+};
+
+type ScrollEvent = {
+  type: "scroll";
+  scrollTop: number;
+  scrollLeft: number;
+};
+
+type AppEvent = ClickEvent | KeyEvent | ScrollEvent;
+
+function logEvent(event: AppEvent) {
+  switch (event.type) {
+    case "click":
+      console.log(`點擊位置: (${event.x}, ${event.y})`);
+      break;
+    case "keydown":
+    case "keyup":
+      console.log(`按鍵: ${event.key}, Ctrl: ${event.ctrlKey}`);
+      break;
+    case "scroll":
+      console.log(`捲動: top=${event.scrollTop}`);
+      break;
+  }
+}
+```
+
+### 避免過度使用交叉型別
+
+```ts
+// 避免：過度嵌套的交叉型別會降低可讀性
+type Overengineered = A & B & C & D & E & F;
+
+// 建議：使用 interface extends 或適度的交叉組合
+interface Better extends A, B {
+  additionalProp: string;
+}
+
+// 或拆分為有語義的中間型別
+type WithAuth = BaseUser & AuthInfo;
+type AdminUser = WithAuth & AdminPermissions;
+```
+
+<CodePlayground
+  title="Discriminated Union 模式的 JavaScript 實作"
+  defaultJS={`// 模擬 Discriminated Union 在 JavaScript runtime 的行為
+
+// 定義不同形狀（模擬 TypeScript 的 Shape 聯合型別）
+function createCircle(radius) {
+  return { type: "circle", radius };
+}
+
+function createRectangle(width, height) {
+  return { type: "rectangle", width, height };
+}
+
+function createTriangle(base, height) {
+  return { type: "triangle", base, height };
+}
+
+// 使用 switch 做型別分派（TypeScript 中會自動收窄型別）
+function getArea(shape) {
+  switch (shape.type) {
+    case "circle":
+      return Math.PI * shape.radius ** 2;
+    case "rectangle":
+      return shape.width * shape.height;
+    case "triangle":
+      return (shape.base * shape.height) / 2;
+    default:
+      throw new Error("未處理的形狀: " + shape.type);
+  }
+}
+
+function describeShape(shape) {
+  switch (shape.type) {
+    case "circle":
+      return "圓形，半徑 " + shape.radius;
+    case "rectangle":
+      return "矩形，" + shape.width + " x " + shape.height;
+    case "triangle":
+      return "三角形，底 " + shape.base + " 高 " + shape.height;
+    default:
+      throw new Error("未處理的形狀: " + shape.type);
+  }
+}
+
+const shapes = [
+  createCircle(5),
+  createRectangle(4, 6),
+  createTriangle(3, 8)
+];
+
+shapes.forEach(function(shape) {
+  console.log(describeShape(shape) + " → 面積: " + getArea(shape).toFixed(2));
+});
+
+// 模擬 Result<T> 型別模式
+console.log("\\n--- Result 模式 ---");
+function safeParse(json) {
+  try {
+    return { ok: true, value: JSON.parse(json) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+const good = safeParse('{"name":"Alice","age":30}');
+const bad = safeParse('not valid json');
+
+function handleResult(result) {
+  if (result.ok) {
+    console.log("解析成功:", JSON.stringify(result.value));
+  } else {
+    console.log("解析失敗:", result.error);
+  }
+}
+handleResult(good);
+handleResult(bad);
+
+// 模擬 AsyncState 狀態機
+console.log("\\n--- AsyncState 狀態機 ---");
+function renderState(state) {
+  switch (state.status) {
+    case "loading": return "[載入中...]";
+    case "success": return "[成功] " + state.data.join(", ");
+    case "error":   return "[錯誤] " + state.error;
+    default:        throw new Error("未知狀態");
+  }
+}
+
+var states = [
+  { status: "loading" },
+  { status: "success", data: ["React", "Vue", "Angular"] },
+  { status: "error", error: "網路連線失敗" }
+];
+states.forEach(function(s) { console.log(renderState(s)); });
+`}
+/>
+
+## 面試重點整理
+
+1. **Union vs Intersection**：Union（`A | B`）表示值為 A 或 B，只能存取共有成員；Intersection（`A & B`）表示值同時為 A 和 B，可存取所有成員。
+
+2. **Discriminated Union**：透過共有的字面量辨識欄位（如 `type`），讓 TypeScript 在 switch/if 中精確收窄型別。是處理複雜狀態的最佳模式。
+
+3. **型別收窄方式**：`typeof`（原始型別）、`instanceof`（類別實例）、`in`（屬性存在性）、真值檢查、辨識欄位檢查。
+
+4. **Exhaustive Checking**：利用 `never` 型別在 default 分支確保所有聯合成員都被處理。新增成員時編譯器會自動提示未處理的情況。
+
+5. **字面量型別**：`"success" | "error"` 比 `string` 更精確，可以在編譯期就限制允許的值。搭配 `as const` 可以從物件或陣列推導出字面量型別。
+
+6. **交叉型別的衝突**：當兩個型別有同名但不相容的屬性時，交叉後該屬性變成 `never`。這與 interface extends 在衝突時直接報錯的行為不同。
+
+7. **Result 模式**：使用 `{ ok: true; value: T } | { ok: false; error: string }` 來表達可能失敗的操作，比拋出例外更型別安全。
+
+---
+
+下一篇我們將學習 **函式型別**，深入了解 TypeScript 如何為函式提供強大的型別支援，包括函式重載、泛型函式預覽與型別謂詞等進階技巧。

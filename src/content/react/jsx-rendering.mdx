@@ -1,0 +1,590 @@
+# JSX 與渲染機制
+
+JSX 是 React 最具標誌性的語法特徵，它讓我們能在 JavaScript 中撰寫類似 HTML 的語法。然而 JSX 並非真正的 HTML，而是 `React.createElement()` 的語法糖。深入理解 JSX 的本質與渲染機制，是掌握 React 的第一步。
+
+## JSX 的本質：React.createElement
+
+JSX 看起來像 HTML，但它實際上會在編譯階段被轉換成 `React.createElement()` 呼叫：
+
+```jsx
+// 你寫的 JSX
+const element = <h1 className="title">Hello, React!</h1>;
+
+// 編譯後的結果
+const element = React.createElement(
+  'h1',
+  { className: 'title' },
+  'Hello, React!'
+);
+```
+
+`React.createElement` 接受三個參數：
+
+1. **type** — 元素類型（字串表示 HTML 標籤，函式表示元件）
+2. **props** — 屬性物件（`null` 表示無屬性）
+3. **children** — 子元素（可以有多個）
+
+巢狀結構的轉換更能看出本質：
+
+```jsx
+// JSX
+const element = (
+  <div className="container">
+    <h1>標題</h1>
+    <p>內容</p>
+  </div>
+);
+
+// 等同於
+const element = React.createElement(
+  'div',
+  { className: 'container' },
+  React.createElement('h1', null, '標題'),
+  React.createElement('p', null, '內容')
+);
+```
+
+<Callout type="info" title="React 17+ 的新 JSX Transform">
+從 React 17 開始，引入了全新的 JSX 轉換方式。你不再需要手動 `import React from 'react'` 就能使用 JSX。新的轉換會自動從 `react/jsx-runtime` 匯入 `jsx` 函式，取代 `React.createElement`。不過理解 `createElement` 的運作方式仍然非常重要。
+</Callout>
+
+## React 元素 vs React 元件
+
+這兩個概念經常被混淆，但它們有本質區別：
+
+### React 元素（Element）
+
+React 元素是一個**普通的 JavaScript 物件**，描述了畫面上應該呈現什麼：
+
+```jsx
+// React 元素 — 透過 JSX 或 createElement 建立
+const element = <h1>Hello</h1>;
+
+// 元素本質上就是物件
+console.log(element);
+// {
+//   type: 'h1',
+//   props: { children: 'Hello' },
+//   key: null,
+//   ref: null,
+//   ...
+// }
+```
+
+React 元素一旦建立就是**不可變的**（immutable），你無法修改它的子元素或屬性。
+
+### React 元件（Component）
+
+元件是一個**函式或類別**，接受 props 並回傳 React 元素：
+
+```jsx
+// 函式元件 — 回傳 React 元素
+function Welcome(props) {
+  return <h1>Hello, {props.name}</h1>;
+}
+
+// 使用元件時，JSX 會將它轉為 createElement 呼叫
+const element = <Welcome name="Sara" />;
+// 等同於
+const element = React.createElement(Welcome, { name: 'Sara' });
+```
+
+**命名規則**：元件名稱必須以大寫字母開頭。React 透過首字母大小寫來區分 HTML 標籤和自訂元件。
+
+```jsx
+// 小寫 — React 視為 HTML 標籤
+<div />  // React.createElement('div')
+
+// 大寫 — React 視為自訂元件
+<MyComponent />  // React.createElement(MyComponent)
+```
+
+## 表達式嵌入：大括號 `{}`
+
+JSX 中使用大括號 `{}` 可以嵌入任何有效的 JavaScript 表達式：
+
+```jsx
+const name = '小明';
+const age = 25;
+
+function UserCard() {
+  return (
+    <div>
+      {/* 變數 */}
+      <h1>{name}</h1>
+
+      {/* 表達式運算 */}
+      <p>出生年：{2026 - age}</p>
+
+      {/* 函式呼叫 */}
+      <p>{name.toUpperCase()}</p>
+
+      {/* 樣板字串 */}
+      <p>{`${name}，${age} 歲`}</p>
+    </div>
+  );
+}
+```
+
+### 不能放在 `{}` 中的東西
+
+要注意以下限制：
+
+```jsx
+// 陳述式（statement）不能放入 {}
+// 以下都會報錯：
+<div>{if (true) { 'hello' }}</div>     // ❌ if 是陳述式
+<div>{for (let i=0; i<5; i++) {}}</div> // ❌ for 是陳述式
+<div>{const x = 1}</div>               // ❌ 宣告是陳述式
+
+// 物件無法直接渲染
+<div>{{ name: 'test' }}</div>           // ❌ Objects are not valid React children
+```
+
+## 條件渲染
+
+React 沒有特殊的條件渲染語法，而是利用 JavaScript 的表達式來實現。
+
+### 三元運算子
+
+最常見的條件渲染方式：
+
+```jsx
+function Greeting({ isLoggedIn }) {
+  return (
+    <div>
+      {isLoggedIn ? (
+        <h1>歡迎回來！</h1>
+      ) : (
+        <h1>請先登入</h1>
+      )}
+    </div>
+  );
+}
+```
+
+### 邏輯 AND（&&）運算子
+
+當只需要「有或沒有」而不需要 else 分支時：
+
+```jsx
+function Notification({ messages }) {
+  return (
+    <div>
+      <h1>通知中心</h1>
+      {messages.length > 0 && (
+        <p>你有 {messages.length} 則未讀訊息</p>
+      )}
+    </div>
+  );
+}
+```
+
+<Callout type="warning" title="注意 && 的陷阱：數字 0">
+`&&` 左側為 falsy 值時不會渲染右側，但數字 `0` 是例外。React 會將 `0` 渲染到畫面上：
+
+```jsx
+{count && <span>數量：{count}</span>}
+// 當 count 為 0 時，畫面會顯示 "0" 而非空白
+// 正確做法：
+{count > 0 && <span>數量：{count}</span>}
+```
+</Callout>
+
+### Early Return 模式
+
+在元件層級，可以提前回傳來處理特殊情況：
+
+```jsx
+function UserProfile({ user, isLoading }) {
+  // 處理載入狀態
+  if (isLoading) {
+    return <div>載入中...</div>;
+  }
+
+  // 處理資料不存在
+  if (!user) {
+    return <div>找不到使用者</div>;
+  }
+
+  // 正常渲染
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+```
+
+### 使用變數儲存 JSX
+
+對於複雜的條件邏輯，可以先用變數儲存 JSX：
+
+```jsx
+function StatusBadge({ status }) {
+  let badge;
+
+  switch (status) {
+    case 'active':
+      badge = <span className="green">啟用中</span>;
+      break;
+    case 'inactive':
+      badge = <span className="gray">已停用</span>;
+      break;
+    case 'banned':
+      badge = <span className="red">已封鎖</span>;
+      break;
+    default:
+      badge = <span>未知</span>;
+  }
+
+  return <div className="badge">{badge}</div>;
+}
+```
+
+## 列表渲染與 .map()
+
+使用 `Array.map()` 將資料陣列轉換為 React 元素陣列：
+
+```jsx
+function FruitList() {
+  const fruits = ['蘋果', '香蕉', '櫻桃', '葡萄'];
+
+  return (
+    <ul>
+      {fruits.map((fruit, index) => (
+        <li key={fruit}>{fruit}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+對於較複雜的資料結構：
+
+```jsx
+function UserList({ users }) {
+  return (
+    <div>
+      {users.map(user => (
+        <div key={user.id} className="user-card">
+          <h3>{user.name}</h3>
+          <p>{user.email}</p>
+          <span>{user.role}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+## Key 的作用與選擇
+
+`key` 是列表渲染中最重要的概念之一，它幫助 React 識別哪些元素發生了變化。
+
+### 為什麼需要 Key
+
+當列表資料更新時，React 需要比對新舊虛擬 DOM 來決定最小化的 DOM 操作。`key` 讓 React 能夠精確地追蹤每個元素的身份：
+
+```jsx
+// 沒有 key（或使用 index 作為 key）
+// React 可能會重新建立所有 DOM 節點
+
+// 有穩定的 key
+// React 只會更新真正變化的節點
+{todos.map(todo => (
+  <TodoItem key={todo.id} todo={todo} />
+))}
+```
+
+### Key 的選擇原則
+
+```jsx
+// ✅ 最佳：使用資料的唯一識別碼
+{items.map(item => <li key={item.id}>{item.name}</li>)}
+
+// ✅ 可接受：使用穩定且唯一的字串
+{items.map(item => <li key={item.slug}>{item.title}</li>)}
+
+// ⚠️ 不建議：使用陣列索引（當列表可能重新排序時）
+{items.map((item, index) => <li key={index}>{item.name}</li>)}
+
+// ❌ 錯誤：使用隨機值
+{items.map(item => <li key={Math.random()}>{item.name}</li>)}
+```
+
+### 什麼時候可以用 index 作為 Key
+
+在以下三個條件**同時滿足**時，使用 index 作為 key 是安全的：
+
+1. 列表是**靜態**的，不會重新排序
+2. 列表項目不會被篩選或刪除
+3. 列表項目沒有自己的狀態（如 input 的值）
+
+### Key 的規則
+
+- Key 只需要在**兄弟元素之間**唯一，不需要全域唯一
+- Key 不會作為 prop 傳遞給子元件（如果需要，用另一個 prop 名稱）
+- Key 不能是布林值或 `null`
+
+```jsx
+// key 不會傳入元件
+function TodoItem({ key, text }) {
+  // ❌ key 是 undefined！它不是一般的 prop
+  console.log(key); // undefined
+}
+
+// 正確做法：另外傳遞
+<TodoItem key={todo.id} id={todo.id} text={todo.text} />
+```
+
+## Fragment
+
+當需要回傳多個相鄰元素但不想多加一層 DOM 節點時，可以使用 `Fragment`：
+
+```jsx
+import { Fragment } from 'react';
+
+// 完整語法 — 需要指定 key 時使用
+function GlossaryItem({ items }) {
+  return (
+    <dl>
+      {items.map(item => (
+        <Fragment key={item.id}>
+          <dt>{item.term}</dt>
+          <dd>{item.description}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+// 簡短語法 — 不需要 key 時使用
+function Columns() {
+  return (
+    <>
+      <td>欄位一</td>
+      <td>欄位二</td>
+    </>
+  );
+}
+```
+
+<Callout type="tip" title="Fragment 的使用時機">
+Fragment 最常見的使用場景：
+- 元件需要回傳多個元素但不需要額外的包裹 div
+- 在表格 `<table>` 結構中，`<tr>` 的子元素必須是 `<td>`，不能有多餘的 div
+- 在 `<dl>` 列表中，需要同時回傳 `<dt>` 和 `<dd>` 成對的元素
+</Callout>
+
+## JSX 編譯過程
+
+了解 JSX 從撰寫到執行的完整流程：
+
+### 1. 編寫 JSX
+
+```jsx
+function App() {
+  return (
+    <div className="app">
+      <Header />
+      <main>
+        <h1>歡迎</h1>
+      </main>
+    </div>
+  );
+}
+```
+
+### 2. Babel/SWC 編譯
+
+舊版轉換（Classic Runtime）：
+
+```js
+function App() {
+  return React.createElement(
+    'div',
+    { className: 'app' },
+    React.createElement(Header, null),
+    React.createElement(
+      'main',
+      null,
+      React.createElement('h1', null, '歡迎')
+    )
+  );
+}
+```
+
+新版轉換（Automatic Runtime，React 17+）：
+
+```js
+import { jsx as _jsx, jsxs as _jsxs } from 'react/jsx-runtime';
+
+function App() {
+  return _jsxs('div', {
+    className: 'app',
+    children: [
+      _jsx(Header, {}),
+      _jsxs('main', {
+        children: [_jsx('h1', { children: '歡迎' })]
+      })
+    ]
+  });
+}
+```
+
+### 3. 建立虛擬 DOM
+
+`createElement` 或 `jsx` 函式執行後，產生 React 元素物件（虛擬 DOM 節點）。
+
+### 4. 協調與渲染
+
+React 的協調器（Reconciler）比對新舊虛擬 DOM 樹，計算出最小的 DOM 操作，然後由渲染器（Renderer）執行實際的 DOM 更新。
+
+## JSX 中的特殊屬性
+
+HTML 屬性在 JSX 中有些需要特別注意的改動：
+
+```jsx
+// class → className
+<div className="container">
+
+// for → htmlFor
+<label htmlFor="email">
+
+// 內聯樣式使用物件（camelCase）
+<div style={{ backgroundColor: 'red', fontSize: '16px' }}>
+
+// tabindex → tabIndex
+<input tabIndex={0} />
+
+// 自訂 data 屬性保持不變
+<div data-testid="my-component">
+
+// 布林屬性
+<input disabled />          // 等同 disabled={true}
+<input disabled={false} />  // 不渲染 disabled 屬性
+```
+
+## 防止 XSS 攻擊
+
+React 預設會對所有在 JSX 中嵌入的值進行跳脫（escape），防止 XSS 攻擊：
+
+```jsx
+const userInput = '<script>alert("XSS")</script>';
+
+// 安全 — React 會跳脫特殊字元
+<div>{userInput}</div>
+// 渲染為文字而非執行 script
+
+// 危險 — dangerouslySetInnerHTML 繞過跳脫
+<div dangerouslySetInnerHTML={{ __html: userInput }} />
+// ⚠️ 只在你確定內容安全時使用
+```
+
+## 條件渲染與列表渲染互動範例
+
+<CodePlayground
+  title="條件渲染與列表渲染"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 16px; }
+.task-list { list-style: none; padding: 0; }
+.task-item { padding: 8px 12px; margin: 4px 0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
+.task-item.done { background: #d4edda; text-decoration: line-through; color: #666; }
+.task-item.pending { background: #fff3cd; }
+.controls { margin-bottom: 12px; display: flex; gap: 8px; }
+.controls button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+.controls button.active { background: #007bff; color: #fff; }
+.controls button:not(.active) { background: #e9ecef; }
+.empty { color: #888; font-style: italic; padding: 12px; }
+.delete-btn { background: #dc3545; color: #fff; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 12px; }`}
+  defaultJS={`const { useState } = React;
+
+function App() {
+  const [tasks, setTasks] = useState([
+    { id: 1, text: '學習 JSX 語法', done: true },
+    { id: 2, text: '理解條件渲染', done: true },
+    { id: 3, text: '練習列表渲染', done: false },
+    { id: 4, text: '掌握 key 的用法', done: false },
+    { id: 5, text: '學習 Fragment', done: false }
+  ]);
+  const [filter, setFilter] = useState('all');
+
+  var filtered = tasks;
+  if (filter === 'done') {
+    filtered = tasks.filter(function(t) { return t.done; });
+  } else if (filter === 'pending') {
+    filtered = tasks.filter(function(t) { return !t.done; });
+  }
+
+  function toggleTask(id) {
+    setTasks(tasks.map(function(t) {
+      return t.id === id ? Object.assign({}, t, { done: !t.done }) : t;
+    }));
+  }
+
+  function deleteTask(id) {
+    setTasks(tasks.filter(function(t) { return t.id !== id; }));
+  }
+
+  var filterButtons = ['all', 'done', 'pending'];
+  var labels = { all: '全部', done: '已完成', pending: '待完成' };
+
+  return React.createElement('div', null,
+    React.createElement('h2', null, '任務清單'),
+    React.createElement('div', { className: 'controls' },
+      filterButtons.map(function(f) {
+        return React.createElement('button', {
+          key: f,
+          className: filter === f ? 'active' : '',
+          onClick: function() { setFilter(f); }
+        }, labels[f]);
+      })
+    ),
+    React.createElement('p', null, '共 ' + tasks.length + ' 項，已完成 ' + tasks.filter(function(t) { return t.done; }).length + ' 項'),
+    filtered.length === 0
+      ? React.createElement('p', { className: 'empty' }, '沒有符合條件的任務')
+      : React.createElement('ul', { className: 'task-list' },
+          filtered.map(function(task) {
+            return React.createElement('li', {
+              key: task.id,
+              className: 'task-item ' + (task.done ? 'done' : 'pending'),
+              onClick: function() { toggleTask(task.id); },
+              style: { cursor: 'pointer' }
+            },
+              React.createElement('span', null, task.done ? '✓ ' : '○ ', task.text),
+              React.createElement('button', {
+                className: 'delete-btn',
+                onClick: function(e) { e.stopPropagation(); deleteTask(task.id); }
+              }, '刪除')
+            );
+          })
+        )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));`}
+  dependencies={["react"]}
+/>
+
+## 面試重點整理
+
+1. **JSX 的本質是什麼？** — JSX 是 `React.createElement()` 的語法糖，編譯後會產生描述 UI 結構的普通 JavaScript 物件（React 元素）。
+
+2. **React 元素和元件的差別？** — 元素是不可變的物件，描述畫面內容；元件是函式或類別，接受 props 回傳元素。
+
+3. **為什麼列表渲染需要 key？** — Key 幫助 React 在 DOM diff 時識別每個元素的身份，從而進行最小化的 DOM 操作，避免不必要的重建。
+
+4. **為什麼不建議用 index 作為 key？** — 當列表項目會重新排序、新增或刪除時，index 會導致 React 錯誤地復用元件狀態，造成 UI 錯誤或效能問題。
+
+5. **`&&` 條件渲染的陷阱是什麼？** — 當左側為數字 `0` 時，React 會將 `0` 渲染到畫面上，應使用明確的布林比較（如 `count > 0`）。
+
+6. **dangerouslySetInnerHTML 的用途與風險？** — 用於渲染原始 HTML 字串，繞過 React 的 XSS 防護，必須確保內容已經過清理（sanitize）。
+
+7. **Fragment 解決了什麼問題？** — 允許元件回傳多個相鄰元素而不產生額外的 DOM 節點，保持 DOM 結構的乾淨。
+
+---
+
+下一篇我們將深入探討 **元件與 Props** — 學習如何建構可複用的元件、理解單向資料流，以及 Props 的各種使用模式。

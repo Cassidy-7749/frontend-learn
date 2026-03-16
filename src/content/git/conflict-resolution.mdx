@@ -1,0 +1,540 @@
+# 衝突解決
+
+衝突（Conflict）是 Git 合併過程中最令人頭痛的問題之一，但也是多人協作時不可避免的環節。理解衝突為何產生、如何解讀衝突標記，以及掌握系統化的解決流程，能讓你在面對衝突時從容不迫。
+
+## 衝突產生的原因
+
+Git 能自動合併大部分修改，但在以下情況會產生衝突：
+
+### 同一檔案同一區域的修改
+
+這是最常見的衝突原因。當兩個分支修改了同一個檔案的同一段程式碼時，Git 無法判斷應該保留哪個版本。
+
+```bash
+# main 分支修改了 app.js 第 10 行
+function greet(name) {
+  return `Hello, ${name}!`;      // main 改成這樣
+}
+
+# feature 分支也修改了 app.js 第 10 行
+function greet(name) {
+  return `Hi there, ${name}!`;   // feature 改成這樣
+}
+
+# 合併時 Git 無法決定用哪個 → 產生衝突
+```
+
+### 其他衝突情境
+
+```bash
+# 一邊修改檔案，另一邊刪除該檔案
+git merge feature
+# CONFLICT (modify/delete): app.js deleted in feature and modified in HEAD
+
+# 兩邊都新增了同名但內容不同的檔案
+# CONFLICT (add/add): Merge conflict in config.js
+
+# 重新命名衝突
+# CONFLICT (rename/rename): file.js renamed to a.js in HEAD and to b.js in feature
+```
+
+## 衝突標記格式
+
+當衝突發生時，Git 會在檔案中插入特殊標記：
+
+```bash
+function greet(name) {
+<<<<<<< HEAD
+  return `Hello, ${name}!`;
+=======
+  return `Hi there, ${name}!`;
+>>>>>>> feature
+}
+```
+
+這三個標記的含義：
+
+- **`<<<<<<< HEAD`**：目前分支（你所在的分支）的修改開始
+- **`=======`**：分隔線，上面是 HEAD 的版本，下面是合併進來的版本
+- **`>>>>>>> feature`**：合併進來的分支（feature）的修改結束
+
+<Callout type="info" title="理解衝突標記">
+把衝突標記想像成一個選擇題：上半部是「你的版本」，下半部是「別人的版本」。解決衝突就是決定最終應該保留什麼——可以選擇其中一個、兩者都保留、或寫一個全新的版本。關鍵是移除所有衝突標記（`<<<<<<<`、`=======`、`>>>>>>>`）。
+</Callout>
+
+### 三方衝突標記（diff3 格式）
+
+Git 可以設定顯示三方衝突標記，多一個共同祖先的版本，更容易判斷：
+
+```bash
+# 啟用 diff3 格式
+git config --global merge.conflictstyle diff3
+
+# 衝突顯示會變成：
+<<<<<<< HEAD
+  return `Hello, ${name}!`;
+||||||| merged common ancestors
+  return `Hey, ${name}`;           # ← 共同祖先的原始版本
+=======
+  return `Hi there, ${name}!`;
+>>>>>>> feature
+
+# 有了原始版本的參考，更容易理解兩邊分別做了什麼修改
+```
+
+## 手動解決衝突的完整流程
+
+### 步驟一：觸發合併並發現衝突
+
+```bash
+git switch main
+git merge feature
+
+# Auto-merging src/App.jsx
+# CONFLICT (content): Merge conflict in src/App.jsx
+# Auto-merging src/utils/api.js
+# CONFLICT (content): Merge conflict in src/utils/api.js
+# Automatic merge failed; fix conflicts and then commit the result.
+```
+
+### 步驟二：查看衝突狀態
+
+```bash
+git status
+# On branch main
+# You have unmerged paths.
+#
+# Unmerged paths:
+#   (use "git add <file>..." to mark resolution)
+#   both modified:   src/App.jsx
+#   both modified:   src/utils/api.js
+
+# 查看有衝突的檔案列表
+git diff --name-only --diff-filter=U
+```
+
+### 步驟三：編輯檔案解決衝突
+
+打開有衝突的檔案，找到衝突標記並決定最終內容：
+
+```js
+// 解決前：
+function fetchUsers() {
+<<<<<<< HEAD
+  const url = '/api/v2/users';
+  return fetch(url, { headers: authHeaders() });
+=======
+  const url = '/api/users';
+  return fetch(url, { cache: 'no-store' });
+>>>>>>> feature
+}
+
+// 解決方案：結合兩邊的修改
+function fetchUsers() {
+  const url = '/api/v2/users';
+  return fetch(url, { headers: authHeaders(), cache: 'no-store' });
+}
+```
+
+### 步驟四：標記衝突已解決
+
+```bash
+# 編輯完成後，用 git add 標記為已解決
+git add src/App.jsx
+git add src/utils/api.js
+
+# 確認所有衝突都已解決
+git status
+# All conflicts fixed but you are still merging.
+```
+
+### 步驟五：完成合併
+
+```bash
+# 提交 merge commit
+git commit
+# Git 會自動產生 merge commit 訊息
+
+# 或自訂訊息
+git commit -m "Merge branch 'feature' - 解決 API 路徑衝突"
+```
+
+### 放棄合併
+
+如果衝突太複雜想重來：
+
+```bash
+# 放棄 merge，回到合併前的狀態
+git merge --abort
+
+# 放棄 rebase，回到 rebase 前的狀態
+git rebase --abort
+```
+
+<CodePlayground
+  title="模擬衝突偵測與解決過程"
+  defaultJS={`// 模擬 Git 衝突偵測與解決的過程
+class ConflictSimulator {
+  constructor() {
+    this.files = {};
+  }
+
+  // 設定共同祖先的檔案內容
+  setBase(filename, lines) {
+    this.files[filename] = { base: [...lines] };
+  }
+
+  // 設定兩個分支各自的修改
+  setBranchChanges(filename, mainLines, featureLines) {
+    this.files[filename].main = [...mainLines];
+    this.files[filename].feature = [...featureLines];
+  }
+
+  // 嘗試合併，偵測衝突
+  merge(filename) {
+    const file = this.files[filename];
+    if (!file) {
+      console.log(\`找不到檔案：\${filename}\`);
+      return;
+    }
+
+    console.log(\`Auto-merging \${filename}...\`);
+    console.log('');
+
+    const base = file.base;
+    const main = file.main;
+    const feature = file.feature;
+    const result = [];
+    const conflicts = [];
+    const maxLen = Math.max(base.length, main.length, feature.length);
+
+    for (let i = 0; i < maxLen; i++) {
+      const baseLine = base[i] || '';
+      const mainLine = main[i] || '';
+      const featureLine = feature[i] || '';
+
+      if (mainLine === featureLine) {
+        // 兩邊相同，沒有衝突
+        result.push(mainLine);
+      } else if (mainLine === baseLine) {
+        // 只有 feature 修改了，自動採用 feature
+        result.push(featureLine);
+        console.log(\`  第 \${i + 1} 行：自動採用 feature 的修改\`);
+      } else if (featureLine === baseLine) {
+        // 只有 main 修改了，自動採用 main
+        result.push(mainLine);
+        console.log(\`  第 \${i + 1} 行：自動採用 main 的修改\`);
+      } else {
+        // 兩邊都修改了 → 衝突！
+        conflicts.push({
+          line: i + 1,
+          main: mainLine,
+          feature: featureLine,
+          base: baseLine
+        });
+        result.push(\`<<<<<<< HEAD\`);
+        result.push(mainLine);
+        result.push(\`=======\`);
+        result.push(featureLine);
+        result.push(\`>>>>>>> feature\`);
+      }
+    }
+
+    if (conflicts.length === 0) {
+      console.log(\`\\n✅ 自動合併成功！沒有衝突。\`);
+    } else {
+      console.log(\`\\n❌ CONFLICT (content): Merge conflict in \${filename}\`);
+      console.log(\`   發現 \${conflicts.length} 個衝突：\`);
+      conflicts.forEach(c => {
+        console.log(\`   第 \${c.line} 行：\`);
+        console.log(\`     原始：\${c.base}\`);
+        console.log(\`     main：\${c.main}\`);
+        console.log(\`     feature：\${c.feature}\`);
+      });
+    }
+
+    console.log(\`\\n--- 合併結果 ---\`);
+    result.forEach((line, i) => console.log(\`  \${String(i + 1).padStart(2)}| \${line}\`));
+    console.log('');
+
+    return { result, conflicts };
+  }
+
+  // 解決衝突
+  resolve(filename, resolvedLines) {
+    console.log(\`\\n--- 手動解決衝突後的 \${filename} ---\`);
+    resolvedLines.forEach((line, i) => {
+      console.log(\`  \${String(i + 1).padStart(2)}| \${line}\`);
+    });
+
+    // 檢查是否還有衝突標記
+    const hasConflictMarkers = resolvedLines.some(line =>
+      line.includes('<<<<<<<') || line.includes('=======') || line.includes('>>>>>>>')
+    );
+
+    if (hasConflictMarkers) {
+      console.log('\\n⚠️ 檔案中仍有衝突標記！請繼續解決。');
+    } else {
+      console.log('\\n✅ 衝突已解決！可以執行 git add 和 git commit。');
+    }
+  }
+}
+
+// 模擬一個衝突場景
+const sim = new ConflictSimulator();
+
+// 共同祖先的檔案內容
+sim.setBase('app.js', [
+  'function fetchData() {',
+  '  const url = "/api/users";',
+  '  const timeout = 3000;',
+  '  return fetch(url);',
+  '}'
+]);
+
+// main 分支的修改
+sim.setBranchChanges('app.js',
+  // main 修改了 URL 和 timeout
+  [
+    'function fetchData() {',
+    '  const url = "/api/v2/users";',
+    '  const timeout = 5000;',
+    '  return fetch(url, { headers: getAuth() });',
+    '}'
+  ],
+  // feature 分支修改了 URL 和 return
+  [
+    'function fetchData() {',
+    '  const url = "/api/users/list";',
+    '  const timeout = 3000;',
+    '  return fetch(url, { cache: "no-store" });',
+    '}'
+  ]
+);
+
+// 嘗試合併
+const { conflicts } = sim.merge('app.js');
+
+// 手動解決衝突
+if (conflicts.length > 0) {
+  console.log('\\n=== 開發者手動解決衝突 ===');
+  sim.resolve('app.js', [
+    'function fetchData() {',
+    '  const url = "/api/v2/users/list";',
+    '  const timeout = 5000;',
+    '  return fetch(url, { headers: getAuth(), cache: "no-store" });',
+    '}'
+  ]);
+}
+
+console.log('\\n=== 解決後的 Git 操作 ===');
+console.log('  $ git add app.js');
+console.log('  $ git commit -m "Merge: 整合 API 路徑與快取設定"');`}
+/>
+
+## 使用工具輔助解決衝突
+
+### VS Code 內建衝突解決
+
+VS Code 在偵測到衝突標記時會提供視覺化的選項：
+
+- **Accept Current Change**：保留 HEAD（目前分支）的版本
+- **Accept Incoming Change**：保留合併進來的版本
+- **Accept Both Changes**：保留兩邊的修改
+- **Compare Changes**：並排比較兩個版本
+
+### git mergetool
+
+Git 支援外部合併工具來協助解決衝突：
+
+```bash
+# 設定 mergetool（以 VS Code 為例）
+git config --global merge.tool vscode
+git config --global mergetool.vscode.cmd 'code --wait --merge $REMOTE $LOCAL $BASE $MERGED'
+
+# 發生衝突時啟動 mergetool
+git mergetool
+
+# 其他常見的 mergetool
+# - vimdiff（終端機內建）
+# - kdiff3（三方比較工具）
+# - Beyond Compare（商業工具）
+# - IntelliJ / WebStorm 內建
+
+# 清理 mergetool 產生的備份檔案
+git clean -f *.orig
+# 或設定不產生備份
+git config --global mergetool.keepBackup false
+```
+
+### 使用 git checkout 快速選擇版本
+
+當你確定要完全採用某一邊的版本時：
+
+```bash
+# 完全採用目前分支的版本
+git checkout --ours src/App.jsx
+
+# 完全採用合併進來的版本
+git checkout --theirs src/App.jsx
+
+# 批次處理（所有衝突檔案都採用 theirs）
+git diff --name-only --diff-filter=U | xargs git checkout --theirs
+```
+
+<Callout type="warning" title="ours/theirs 在 rebase 中相反">
+在 `git rebase` 期間，`--ours` 和 `--theirs` 的含義與 `git merge` 相反。因為 rebase 的運作方式是把你的 commit 重新套用到目標分支上，所以「ours」是目標分支（如 main），「theirs」才是你的修改。這是非常容易搞混的地方。
+</Callout>
+
+## 解決 Rebase 衝突
+
+Rebase 的衝突處理與 merge 有一個重要差異：rebase 是逐個 commit 重新套用，所以可能需要**多次解決衝突**。
+
+```bash
+git switch feature
+git rebase main
+
+# 第一個 commit 產生衝突
+# CONFLICT (content): Merge conflict in src/App.jsx
+# error: could not apply abc1234... feat: 新增搜尋框
+
+# 解決第一個衝突
+# 1. 編輯檔案
+# 2. git add src/App.jsx
+# 3. 繼續 rebase
+git rebase --continue
+
+# 第二個 commit 又可能產生衝突
+# CONFLICT (content): Merge conflict in src/App.jsx
+# 重複解決過程...
+
+git rebase --continue
+# Successfully rebased and updated refs/heads/feature
+
+# 如果想跳過某個 commit（放棄該 commit 的修改）
+git rebase --skip
+
+# 如果想完全放棄 rebase
+git rebase --abort
+```
+
+## 預防衝突的策略
+
+預防勝於治療，以下策略能大幅減少衝突的發生頻率和嚴重程度：
+
+### 頻繁同步主分支
+
+```bash
+# 每天（或更頻繁）將 main 的變更拉入功能分支
+git switch feature-branch
+git rebase main
+# 或
+git merge main
+
+# 小衝突比大衝突好解決！
+```
+
+### 保持小型 Pull Request
+
+```bash
+# 不好的做法：一個 PR 修改 50 個檔案，開發兩週
+# 好的做法：拆成多個小 PR，每個 PR 專注一件事
+
+# 大功能可以拆分：
+feature/search-ui        # PR 1：搜尋框 UI
+feature/search-api       # PR 2：搜尋 API 整合
+feature/search-results   # PR 3：搜尋結果顯示
+feature/search-filters   # PR 4：篩選功能
+```
+
+### 良好的團隊溝通
+
+- 開發前先確認沒有其他人在修改相同區域
+- 使用 CODEOWNERS 檔案明確檔案的負責人
+- 在 Slack/Teams 通知團隊你正在重構的區域
+
+### 程式碼結構的改善
+
+```bash
+# 將大檔案拆成小模組，減少衝突機率
+# 不好：所有功能都在 App.jsx（500 行）
+# 好：
+src/
+  components/
+    Header.jsx        # 各自獨立，不同人修改不同檔案
+    SearchBar.jsx
+    UserList.jsx
+  hooks/
+    useSearch.js
+    useAuth.js
+  utils/
+    api.js
+    format.js
+```
+
+## 複雜衝突場景與解決技巧
+
+### 場景一：大量衝突時的策略
+
+```bash
+# 先查看衝突的規模
+git diff --name-only --diff-filter=U | wc -l
+# 30 個檔案有衝突...
+
+# 策略：先處理核心檔案，再處理周邊
+# 1. 查看哪些檔案衝突最嚴重
+git diff --stat
+
+# 2. 如果大部分衝突來自格式化（如 Prettier）
+# 可以先 accept theirs，再重新跑格式化
+git diff --name-only --diff-filter=U | xargs git checkout --theirs
+npm run format
+git add .
+```
+
+### 場景二：合併後發現解錯衝突
+
+```bash
+# 如果已經 commit 了但發現解錯
+# 方法 1：重做 merge
+git reset --hard HEAD~1   # 回到 merge 前
+git merge feature         # 重新 merge
+
+# 方法 2：直接修改檔案，建立新的 commit
+# 修改檔案...
+git add .
+git commit -m "fix: 修正合併衝突解決錯誤"
+```
+
+### 場景三：rerere — 記住衝突解決方案
+
+```bash
+# 啟用 rerere（reuse recorded resolution）
+git config --global rerere.enabled true
+
+# Git 會記住你解決衝突的方式
+# 下次遇到相同的衝突時，自動套用之前的解決方案
+# 特別適合反覆 rebase 的情境
+```
+
+## 面試重點整理
+
+- **衝突產生原因**：兩個分支修改了同一檔案的同一區域，Git 無法自動判斷應保留哪個版本
+- **衝突標記**：`<<<<<<< HEAD`（目前分支）、`=======`（分隔線）、`>>>>>>> branch`（合併進來的分支）
+- **解決流程**：編輯檔案移除衝突標記 → `git add` 標記已解決 → `git commit` 完成合併
+- **ours vs theirs**：在 rebase 中含義相反，因為 rebase 是將「你的 commit」重新套用到目標分支上
+- **diff3 格式**：`git config merge.conflictstyle diff3` 可顯示共同祖先版本，更容易判斷
+- **預防策略**：頻繁同步主分支、保持小型 PR、良好溝通、模組化程式碼結構
+- **rerere**：Git 可以記住衝突解決方案，自動套用到相同衝突
+- **merge --abort / rebase --abort**：隨時可以放棄合併，回到操作前的狀態
+
+## 系列回顧
+
+恭喜你完成了 Git 系列的學習！讓我們回顧整個系列的重點：
+
+1. **Git 基礎**：三個區域、基本指令、.gitignore
+2. **分支管理**：分支本質、HEAD 指標、分支策略
+3. **合併策略**：Merge vs Rebase、Squash、使用時機
+4. **衝突解決**：衝突標記、解決流程、預防策略
+
+掌握這些知識後，你已經具備了在團隊中高效使用 Git 協作的能力。持續練習這些操作，它們很快就會變成你的第二天性。

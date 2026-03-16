@@ -1,0 +1,511 @@
+# Git 基礎觀念與工作流程
+
+版本控制是軟體開發中不可或缺的工具。無論是個人專案還是團隊協作，版本控制系統讓我們能追蹤每一次修改、回溯到任意歷史版本、並行開發不同功能。Git 作為目前最主流的分散式版本控制系統，理解其核心觀念是每位前端工程師的基本功。
+
+## 版本控制的演進
+
+版本控制系統（Version Control System, VCS）經歷了三個世代的演進：
+
+### 本地版本控制
+
+最早期的方式是在本機建立資料庫來記錄檔案的變更歷史。例如 RCS（Revision Control System）會在本地儲存每個版本之間的差異（patch），需要時再重新組合出特定版本的檔案。缺點是無法與他人協作。
+
+### 集中式版本控制（CVCS）
+
+SVN（Subversion）和 CVS 是典型的集中式系統。所有版本歷史都存放在一台中央伺服器上，開發者從伺服器 checkout 最新版本進行開發。
+
+```bash
+# SVN 的典型操作（集中式）
+svn checkout http://svn.example.com/project
+svn update        # 從伺服器拉取最新版本
+svn commit -m "修改功能"  # 提交到中央伺服器
+```
+
+集中式的問題在於：伺服器一旦故障，所有人都無法提交；網路斷線時也無法查看歷史記錄。
+
+### 分散式版本控制（DVCS）
+
+Git 和 Mercurial 屬於分散式系統。每位開發者的本機都擁有完整的版本庫副本，包含所有歷史記錄。即使沒有網路，也能進行提交、查看歷史、建立分支等操作。
+
+```bash
+# Git 的操作（分散式）
+git clone https://github.com/user/project.git
+git add .
+git commit -m "修改功能"  # 提交到本地儲存庫
+git push origin main      # 推送到遠端（需要網路）
+```
+
+<Callout type="info" title="Git 的誕生故事">
+Git 由 Linux 之父 Linus Torvalds 在 2005 年創建。當時 Linux 核心開發團隊與 BitKeeper 的授權合作終止，Linus 花了大約兩週時間開發出 Git 的初版。他的設計目標是：速度快、支援非線性開發（大量分支）、完全分散式、能處理大型專案。
+</Callout>
+
+## Git 的三個區域
+
+理解 Git 的三個核心區域是掌握 Git 的關鍵。每個檔案在 Git 中都處於這三個區域之一：
+
+### Working Directory（工作目錄）
+
+就是你在檔案系統中看到的專案資料夾。你直接在這裡編輯檔案。工作目錄中的檔案可能是：
+
+- **Untracked**（未追蹤）：Git 不知道這個檔案的存在
+- **Modified**（已修改）：檔案被修改但尚未加入暫存區
+- **Unmodified**（未修改）：與上次提交一致
+
+### Staging Area（暫存區 / Index）
+
+暫存區是一個中間層，用來準備下一次提交的內容。你可以選擇性地將修改加入暫存區，這代表你可以只提交部分修改，而非全部。
+
+### Repository（儲存庫 / .git 目錄）
+
+Git 的資料庫，儲存所有提交的快照和元資料。執行 `git commit` 後，暫存區的內容就會被永久記錄到儲存庫中。
+
+```bash
+# 檔案在三個區域之間的流轉
+# Working Directory → Staging Area → Repository
+
+git add file.js      # Working Dir → Staging Area
+git commit -m "msg"  # Staging Area → Repository
+git checkout -- file.js  # Repository → Working Dir（還原修改）
+```
+
+<CodePlayground
+  title="模擬 Git 三個區域的檔案流轉"
+  defaultJS={`// 用陣列模擬 Git 的三個區域
+class GitSimulator {
+  constructor() {
+    this.workingDir = [];    // 工作目錄
+    this.stagingArea = [];   // 暫存區
+    this.repository = [];    // 儲存庫（commit 歷史）
+    this.commitHistory = [];
+  }
+
+  // 建立新檔案（出現在工作目錄）
+  createFile(name, content) {
+    const existing = this.workingDir.find(f => f.name === name);
+    if (existing) {
+      existing.content = content;
+      existing.status = 'modified';
+      console.log(\`📝 修改檔案: \${name}\`);
+    } else {
+      this.workingDir.push({ name, content, status: 'untracked' });
+      console.log(\`📄 建立新檔案: \${name}\`);
+    }
+  }
+
+  // git add — 將檔案從工作目錄加入暫存區
+  add(name) {
+    const file = this.workingDir.find(f => f.name === name);
+    if (!file) {
+      console.log(\`❌ 找不到檔案: \${name}\`);
+      return;
+    }
+    // 加入暫存區的副本
+    const staged = this.stagingArea.find(f => f.name === name);
+    if (staged) {
+      staged.content = file.content;
+    } else {
+      this.stagingArea.push({ name: file.name, content: file.content });
+    }
+    file.status = 'staged';
+    console.log(\`✅ git add \${name} → 已加入暫存區\`);
+  }
+
+  // git commit — 將暫存區的內容提交到儲存庫
+  commit(message) {
+    if (this.stagingArea.length === 0) {
+      console.log('❌ 暫存區是空的，沒有東西可以提交');
+      return;
+    }
+    const snapshot = this.stagingArea.map(f => ({ ...f }));
+    const commitObj = {
+      id: (this.commitHistory.length + 1).toString(16).padStart(7, '0'),
+      message,
+      files: snapshot,
+      timestamp: new Date().toISOString()
+    };
+    this.commitHistory.push(commitObj);
+    this.repository = [...snapshot];
+    // 清空暫存區，更新工作目錄狀態
+    this.stagingArea = [];
+    this.workingDir.forEach(f => { f.status = 'committed'; });
+    console.log(\`🎉 git commit -m "\${message}"\`);
+    console.log(\`   Commit ID: \${commitObj.id}\`);
+    console.log(\`   包含 \${snapshot.length} 個檔案\`);
+  }
+
+  // git status — 查看目前狀態
+  status() {
+    console.log('--- git status ---');
+    const untracked = this.workingDir.filter(f => f.status === 'untracked');
+    const modified = this.workingDir.filter(f => f.status === 'modified');
+    const staged = this.workingDir.filter(f => f.status === 'staged');
+    if (staged.length) console.log('暫存區:', staged.map(f => f.name).join(', '));
+    if (modified.length) console.log('已修改:', modified.map(f => f.name).join(', '));
+    if (untracked.length) console.log('未追蹤:', untracked.map(f => f.name).join(', '));
+    if (!untracked.length && !modified.length && !staged.length) {
+      console.log('工作目錄是乾淨的');
+    }
+    console.log('------------------');
+  }
+
+  // git log — 查看提交歷史
+  log() {
+    console.log('--- git log ---');
+    [...this.commitHistory].reverse().forEach(c => {
+      console.log(\`commit \${c.id}: \${c.message} (\${c.files.length} files)\`);
+    });
+    if (!this.commitHistory.length) console.log('（尚無提交記錄）');
+    console.log('----------------');
+  }
+}
+
+// 模擬一個完整的 Git 工作流程
+const git = new GitSimulator();
+
+git.createFile('index.html', '<html>...</html>');
+git.createFile('style.css', 'body { margin: 0; }');
+git.status();
+
+git.add('index.html');
+git.add('style.css');
+git.status();
+
+git.commit('初始提交：建立專案結構');
+git.status();
+
+git.createFile('app.js', 'console.log("hello")');
+git.createFile('index.html', '<html><body>更新</body></html>');
+git.status();
+
+git.add('app.js');
+git.commit('新增 app.js');
+
+git.log();`}
+/>
+
+## git init — 初始化儲存庫
+
+一切從 `git init` 開始。這個指令會在目前目錄建立一個 `.git` 隱藏資料夾，裡面包含 Git 所需的所有資料結構。
+
+```bash
+# 建立新專案並初始化
+mkdir my-project
+cd my-project
+git init
+# 輸出：Initialized empty Git repository in /path/my-project/.git/
+
+# 查看 .git 目錄結構
+ls -la .git/
+# HEAD        ← 指向目前分支的指標
+# config      ← 儲存庫設定
+# hooks/      ← Git hook 腳本
+# objects/    ← 儲存所有的物件（blob, tree, commit）
+# refs/       ← 分支與標籤的參照
+```
+
+## git add — 將檔案加入暫存區
+
+`git add` 是將工作目錄的變更加入暫存區的指令。它有多種使用方式：
+
+```bash
+# 加入單一檔案
+git add index.html
+
+# 加入多個檔案
+git add index.html style.css app.js
+
+# 加入所有 .js 檔案
+git add *.js
+
+# 加入目前目錄下所有變更（包含新增、修改、刪除）
+git add .
+
+# 加入所有已追蹤檔案的修改（不包含新檔案）
+git add -u
+
+# 互動式加入（可以選擇部分修改）
+git add -p
+```
+
+<Callout type="tip" title="git add -p 的威力">
+`git add -p`（patch mode）讓你可以逐段檢視修改並選擇要暫存哪些部分。這在一個檔案中同時有多個不相關的修改時特別有用，可以將它們拆成不同的提交，保持提交歷史的清晰。
+</Callout>
+
+## git commit — 提交變更
+
+`git commit` 將暫存區的快照永久記錄到儲存庫中。每次提交都會產生一個唯一的 SHA-1 雜湊值作為識別碼。
+
+```bash
+# 基本提交
+git commit -m "feat: 新增使用者登入功能"
+
+# 多行提交訊息
+git commit -m "feat: 新增使用者登入功能" -m "包含 OAuth 2.0 整合和表單驗證"
+
+# 跳過暫存區，直接提交所有已追蹤檔案的修改
+git commit -am "fix: 修正首頁排版問題"
+
+# 修改最近一次提交（包含訊息和內容）
+git commit --amend -m "feat: 新增使用者登入功能（含 Google OAuth）"
+```
+
+### Commit 訊息規範
+
+良好的 commit 訊息是團隊協作的基礎。常見的 Conventional Commits 格式：
+
+```bash
+# 格式：<type>(<scope>): <description>
+feat: 新增功能
+fix: 修正錯誤
+docs: 文件更新
+style: 格式調整（不影響程式邏輯）
+refactor: 重構（不是新功能也不是修正）
+test: 測試相關
+chore: 建構工具或輔助工具的變動
+
+# 範例
+git commit -m "feat(auth): 新增 JWT token 刷新機制"
+git commit -m "fix(ui): 修正手機版導覽列溢出問題"
+git commit -m "docs: 更新 API 文件的認證章節"
+```
+
+## git status — 查看狀態
+
+`git status` 是最常使用的指令之一，顯示工作目錄和暫存區的目前狀態：
+
+```bash
+git status
+
+# 輸出範例：
+# On branch main
+# Changes to be committed:          ← 暫存區的檔案（綠色）
+#   new file:   components/Header.jsx
+#
+# Changes not staged for commit:    ← 已修改但未暫存（紅色）
+#   modified:   src/App.jsx
+#
+# Untracked files:                  ← 未追蹤的新檔案（紅色）
+#   utils/helpers.js
+
+# 精簡版
+git status -s
+# A  components/Header.jsx   ← A = Added（已暫存的新檔案）
+#  M src/App.jsx              ← M = Modified（未暫存的修改）
+# ?? utils/helpers.js         ← ?? = Untracked
+```
+
+## git log — 查看提交歷史
+
+`git log` 顯示提交歷史，有多種格式選項：
+
+```bash
+# 預設格式（詳細）
+git log
+
+# 單行格式
+git log --oneline
+# a1b2c3d feat: 新增使用者登入
+# e4f5g6h fix: 修正 CSS 問題
+# i7j8k9l 初始提交
+
+# 圖形化顯示分支合併歷史
+git log --oneline --graph --all
+# * a1b2c3d (HEAD -> main) Merge branch 'feature'
+# |\
+# | * d4e5f6g feat: 新增搜尋功能
+# |/
+# * i7j8k9l 初始提交
+
+# 搜尋特定作者的提交
+git log --author="Alice"
+
+# 搜尋提交訊息
+git log --grep="fix"
+
+# 查看特定檔案的歷史
+git log -- src/App.jsx
+
+# 限制顯示數量
+git log -5
+```
+
+## git diff — 比較差異
+
+`git diff` 是檢查修改內容的利器，理解不同用法很重要：
+
+```bash
+# 比較工作目錄 vs 暫存區（尚未 git add 的修改）
+git diff
+
+# 比較暫存區 vs 最新提交（已 git add 但未 commit）
+git diff --staged
+# 等同於
+git diff --cached
+
+# 比較工作目錄 vs 最新提交
+git diff HEAD
+
+# 比較兩個提交之間的差異
+git diff abc1234 def5678
+
+# 比較兩個分支
+git diff main..feature-branch
+
+# 只顯示有差異的檔案名稱
+git diff --name-only
+
+# 顯示統計摘要
+git diff --stat
+#  src/App.jsx        | 15 +++++++++------
+#  src/utils/api.js   |  8 ++++++++
+#  2 files changed, 17 insertions(+), 6 deletions(-)
+```
+
+## .gitignore 規則與常用模板
+
+`.gitignore` 檔案告訴 Git 哪些檔案或目錄應該被忽略，不納入版本控制。
+
+```bash
+# .gitignore 語法規則
+
+# 忽略特定檔案
+.env
+secrets.json
+
+# 忽略特定副檔名
+*.log
+*.tmp
+
+# 忽略整個目錄
+node_modules/
+dist/
+build/
+.cache/
+
+# 使用萬用字元
+*.min.js
+*.min.css
+
+# 否定規則（! 開頭表示不要忽略）
+!important.log
+
+# 忽略特定目錄下的檔案
+docs/*.pdf
+
+# 遞迴忽略（任意層級）
+**/*.DS_Store
+```
+
+### 前端專案常用 .gitignore 模板
+
+```bash
+# 相依套件
+node_modules/
+bower_components/
+
+# 建構輸出
+dist/
+build/
+.next/
+.nuxt/
+.output/
+
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# 編輯器設定
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 作業系統
+.DS_Store
+Thumbs.db
+
+# 測試覆蓋率
+coverage/
+
+# 快取
+.cache/
+.eslintcache
+.parcel-cache/
+
+# TypeScript
+*.tsbuildinfo
+
+# 除錯日誌
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+```
+
+<Callout type="warning" title="已追蹤檔案的處理">
+如果一個檔案已經被 Git 追蹤了，之後才加入 `.gitignore`，Git 不會自動忽略它。你需要先將它從追蹤中移除：`git rm --cached filename`。這只會從 Git 的追蹤中移除，不會刪除實際檔案。
+</Callout>
+
+## 其他實用基礎指令
+
+```bash
+# git clone — 複製遠端儲存庫
+git clone https://github.com/user/repo.git
+git clone https://github.com/user/repo.git my-folder  # 指定目錄名稱
+
+# git rm — 從版本控制中移除檔案
+git rm file.js            # 刪除檔案並從追蹤中移除
+git rm --cached file.js   # 只從追蹤中移除，保留實際檔案
+
+# git mv — 重新命名或移動檔案
+git mv old-name.js new-name.js
+
+# git stash — 暫存目前的修改
+git stash             # 暫存所有修改
+git stash list        # 查看暫存清單
+git stash pop         # 取出最近的暫存
+git stash drop        # 丟棄最近的暫存
+
+# git restore — 還原檔案（Git 2.23+）
+git restore file.js           # 還原工作目錄的修改
+git restore --staged file.js  # 將檔案從暫存區移回工作目錄
+```
+
+## 設定 Git 環境
+
+開始使用 Git 前，建議先完成基本設定：
+
+```bash
+# 設定使用者資訊（必要）
+git config --global user.name "Your Name"
+git config --global user.email "your@email.com"
+
+# 設定預設分支名稱
+git config --global init.defaultBranch main
+
+# 設定預設編輯器
+git config --global core.editor "code --wait"
+
+# 查看所有設定
+git config --list
+
+# 設定別名（提升效率）
+git config --global alias.st status
+git config --global alias.co checkout
+git config --global alias.br branch
+git config --global alias.ci commit
+git config --global alias.lg "log --oneline --graph --all"
+```
+
+## 面試重點整理
+
+- **集中式 vs 分散式**：Git 是分散式版本控制，每個副本都有完整歷史，可離線操作；SVN 是集中式，依賴中央伺服器
+- **三個區域**：Working Directory（工作目錄）→ Staging Area（暫存區）→ Repository（儲存庫），理解檔案在三個區域間的流轉
+- **git add -p**：可以選擇性暫存部分修改，保持提交的原子性
+- **git diff 的三種比較**：`git diff`（工作目錄 vs 暫存區）、`git diff --staged`（暫存區 vs 最新提交）、`git diff HEAD`（工作目錄 vs 最新提交）
+- **.gitignore**：已追蹤的檔案需要 `git rm --cached` 後才會被忽略
+- **Commit 訊息規範**：遵循 Conventional Commits 格式有助於自動化生成 changelog
+
+## 下一篇預告
+
+掌握了 Git 基礎操作後，接下來我們將深入探討 Git 最強大的功能之一——**分支管理**。你將學到分支的本質、HEAD 指標的運作，以及各種分支策略的應用。

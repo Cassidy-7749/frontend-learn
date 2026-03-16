@@ -1,0 +1,528 @@
+# 進階技巧
+
+掌握 Git 的基本操作後，進階技巧能讓你更有效率地管理複雜的開發情境。從精確地摘取特定提交，到用二分搜尋自動定位 bug，這些工具是資深開發者的日常利器。
+
+## cherry-pick — 摘取提交
+
+`git cherry-pick` 可以將指定的提交「摘取」到目前分支，而不需要合併整個分支。它會複製該提交的變更內容，在目前分支上建立一個新的提交。
+
+### 基本用法
+
+```bash
+# 摘取單一提交
+git cherry-pick a1b2c3d
+
+# 摘取多個提交
+git cherry-pick a1b2c3d e4f5g6h
+
+# 摘取一個範圍的提交（不含起始點）
+git cherry-pick A..B
+
+# 摘取一個範圍的提交（包含起始點）
+git cherry-pick A^..B
+```
+
+### 常見選項
+
+```bash
+# 只套用變更到工作目錄，不自動提交
+git cherry-pick --no-commit a1b2c3d
+
+# 加上來源資訊到提交訊息中
+git cherry-pick -x a1b2c3d
+# 訊息會附加：(cherry picked from commit a1b2c3d)
+
+# 發生衝突時，解決後繼續
+git cherry-pick --continue
+
+# 取消 cherry-pick
+git cherry-pick --abort
+```
+
+### 實用場景
+
+- **將 hotfix 套用到多個版本分支**：在 main 修復的 bug，cherry-pick 到 release/1.x 和 release/2.x
+- **從廢棄分支中挑選有用的提交**：分支被放棄了，但其中某些提交仍有價值
+- **選擇性地合併功能**：只需要某個功能的部分提交
+
+```bash
+# 場景：將 main 上的修復套用到舊版本分支
+git checkout release/1.x
+git cherry-pick <fix-commit-hash>
+```
+
+<Callout type="info" title="cherry-pick 會產生新的提交">
+cherry-pick 建立的是全新的提交（新的 hash），即使變更內容相同。這意味著同一個修改在不同分支上會有不同的提交 hash。如果之後合併這兩個分支，Git 通常能智慧地處理，但最好記錄哪些提交已被 cherry-pick，使用 `-x` 參數是個好習慣。
+</Callout>
+
+## Interactive Rebase — 互動式變基
+
+`git rebase -i` 是最強大的歷史編輯工具，讓你可以重新排列、編輯、合併或刪除提交。
+
+### 啟動互動式 rebase
+
+```bash
+# 修改最近 4 個提交
+git rebase -i HEAD~4
+
+# 修改從某個提交之後的所有提交
+git rebase -i a1b2c3d
+```
+
+執行後會開啟編輯器，顯示類似以下內容：
+
+```
+pick a1b2c3d feat: add login UI
+pick e4f5g6h fix: typo in login
+pick i7j8k9l feat: add validation
+pick m0n1o2p fix: validation edge case
+```
+
+### 可用的操作指令
+
+| 指令 | 縮寫 | 功能 |
+|------|------|------|
+| pick | p | 保留提交不變 |
+| reword | r | 修改提交訊息 |
+| edit | e | 暫停讓你修改提交內容 |
+| squash | s | 與前一個提交合併，保留訊息 |
+| fixup | f | 與前一個提交合併，丟棄訊息 |
+| drop | d | 刪除提交 |
+
+### squash — 合併提交
+
+將多個小提交合併為一個有意義的提交：
+
+```bash
+# 原始：
+pick a1b2c3d feat: add login UI
+pick e4f5g6h fix: typo in login
+pick i7j8k9l add missing import
+pick m0n1o2p fix: another typo
+
+# 修改為（將後三個 squash 到第一個）：
+pick a1b2c3d feat: add login UI
+squash e4f5g6h fix: typo in login
+squash i7j8k9l add missing import
+squash m0n1o2p fix: another typo
+
+# 結果：四個提交合併為一個，可以編輯最終訊息
+```
+
+### reword — 修改提交訊息
+
+```bash
+# 將 pick 改為 reword
+reword a1b2c3d feat: add login UI
+pick e4f5g6h feat: add validation
+```
+
+儲存後 Git 會開啟編輯器讓你修改指定的提交訊息。
+
+### edit — 修改提交內容
+
+```bash
+edit a1b2c3d feat: add login UI
+pick e4f5g6h feat: add validation
+```
+
+Git 會暫停在該提交，讓你進行修改：
+
+```bash
+# Git 暫停後，你可以：
+git add <修改的檔案>
+git commit --amend
+git rebase --continue
+```
+
+### drop — 刪除提交
+
+```bash
+# 直接刪除某個提交
+pick a1b2c3d feat: add login UI
+drop e4f5g6h 這個提交不要了
+pick i7j8k9l feat: add validation
+```
+
+<Callout type="warning" title="不要 rebase 已推送的提交">
+Interactive rebase 會重寫歷史（改變提交的 hash）。如果這些提交已經推送到遠端且有其他人基於它們工作，rebase 會造成歷史分歧。只對本地尚未推送的提交使用 interactive rebase。如果必須修改已推送的提交，需要 force push 並確保團隊成員知情。
+</Callout>
+
+## git bisect — 二分搜尋 bug
+
+`git bisect` 用二分搜尋法在提交歷史中找出引入 bug 的那個提交。當你知道某個功能在過去某個版本是正常的，但現在壞了，bisect 能幫你快速定位問題。
+
+### 手動 bisect
+
+```bash
+# 開始 bisect
+git bisect start
+
+# 標記目前版本有 bug
+git bisect bad
+
+# 標記已知正常的版本
+git bisect good v1.0.0
+
+# Git 會自動切換到中間的提交
+# 測試後告訴 Git 結果
+git bisect good  # 這個版本正常
+# 或
+git bisect bad   # 這個版本也有 bug
+
+# Git 繼續二分，直到找到引入 bug 的提交
+# Bisecting: 0 revisions left to test
+# a1b2c3d is the first bad commit
+
+# 結束 bisect
+git bisect reset
+```
+
+### 自動 bisect
+
+如果你有一個測試腳本能判斷好壞，bisect 可以完全自動化：
+
+```bash
+# 腳本回傳 0 表示正常，非 0 表示有 bug
+git bisect start HEAD v1.0.0
+git bisect run npm test
+
+# 或使用自訂腳本
+git bisect run ./test-specific-feature.sh
+```
+
+### bisect 的效率
+
+二分搜尋的時間複雜度是 O(log n)。假設有 1000 個提交需要檢查：
+
+- 線性搜尋：最多 1000 次
+- 二分搜尋：最多 10 次（log2(1000) ≈ 10）
+
+## git submodule — 子模組
+
+`git submodule` 讓你在一個 Git 倉庫中嵌入另一個 Git 倉庫，適合管理共用函式庫或第三方依賴。
+
+### 新增子模組
+
+```bash
+# 新增子模組
+git submodule add https://github.com/lib/awesome-lib.git libs/awesome-lib
+
+# 這會建立 .gitmodules 檔案
+cat .gitmodules
+# [submodule "libs/awesome-lib"]
+#   path = libs/awesome-lib
+#   url = https://github.com/lib/awesome-lib.git
+```
+
+### 克隆含子模組的倉庫
+
+```bash
+# 方法 1：克隆時一併初始化子模組
+git clone --recursive https://github.com/user/project.git
+
+# 方法 2：克隆後再初始化
+git clone https://github.com/user/project.git
+cd project
+git submodule init
+git submodule update
+
+# 簡寫
+git submodule update --init --recursive
+```
+
+### 更新子模組
+
+```bash
+# 更新所有子模組到各自追蹤的最新提交
+git submodule update --remote
+
+# 更新特定子模組
+git submodule update --remote libs/awesome-lib
+```
+
+### 移除子模組
+
+```bash
+# 移除子模組（Git 2.12+）
+git rm libs/awesome-lib
+# 手動刪除 .git/modules 中的快取
+rm -rf .git/modules/libs/awesome-lib
+```
+
+## git worktree — 工作樹
+
+`git worktree` 讓你同時在多個分支上工作，每個分支有自己獨立的工作目錄，但共享同一個 `.git` 倉庫。
+
+### 基本用法
+
+```bash
+# 建立新的工作樹（檢出指定分支到新目錄）
+git worktree add ../project-hotfix hotfix/urgent-fix
+
+# 建立新的工作樹並建立新分支
+git worktree add -b feature/new-ui ../project-new-ui
+
+# 列出所有工作樹
+git worktree list
+# /home/user/project          a1b2c3d [main]
+# /home/user/project-hotfix   e4f5g6h [hotfix/urgent-fix]
+# /home/user/project-new-ui   i7j8k9l [feature/new-ui]
+```
+
+### 使用場景
+
+```bash
+# 場景：同時處理 hotfix 和日常開發
+# 不需要 stash 或切換分支！
+
+# 在主工作目錄繼續開發
+cd /home/user/project
+# 正常開發...
+
+# 在另一個目錄處理 hotfix
+cd /home/user/project-hotfix
+# 修復 bug...
+git add .
+git commit -m "fix: critical bug"
+
+# 完成後移除工作樹
+git worktree remove ../project-hotfix
+```
+
+### 清理工作樹
+
+```bash
+# 移除工作樹
+git worktree remove ../project-hotfix
+
+# 清理已刪除目錄的工作樹參考
+git worktree prune
+```
+
+## git hooks — 鉤子
+
+Git hooks 是在特定 Git 事件發生時自動執行的腳本，用於自動化工作流程。
+
+### 常用的 hooks
+
+| Hook | 觸發時機 | 用途 |
+|------|----------|------|
+| pre-commit | 提交前 | 程式碼檢查、格式化 |
+| commit-msg | 編輯提交訊息後 | 驗證訊息格式 |
+| pre-push | 推送前 | 執行測試 |
+| post-merge | 合併後 | 安裝新依賴 |
+| prepare-commit-msg | 開啟編輯器前 | 自動產生訊息模板 |
+
+### 設定 hook
+
+Hooks 位於 `.git/hooks/` 目錄，範例檔以 `.sample` 結尾。移除 `.sample` 即可啟用：
+
+```bash
+# 建立 pre-commit hook
+cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/sh
+# 提交前自動執行 lint
+echo "Running lint check..."
+npm run lint
+if [ $? -ne 0 ]; then
+  echo "Lint failed! Please fix errors before committing."
+  exit 1
+fi
+EOF
+
+chmod +x .git/hooks/pre-commit
+```
+
+### 使用 Husky（推薦）
+
+直接管理 `.git/hooks` 有個問題——它不會被 Git 追蹤。[Husky](https://typicode.github.io/husky/) 解決了這個問題：
+
+```bash
+# 安裝
+npm install husky --save-dev
+npx husky init
+
+# 設定 pre-commit hook
+echo "npm run lint" > .husky/pre-commit
+
+# 搭配 lint-staged 只檢查暫存的檔案
+npm install lint-staged --save-dev
+```
+
+```json
+// package.json
+{
+  "lint-staged": {
+    "*.{js,ts}": ["eslint --fix", "prettier --write"],
+    "*.css": ["prettier --write"]
+  }
+}
+```
+
+<Callout type="tip" title="Husky + lint-staged 是業界標準">
+幾乎所有現代前端專案都使用 Husky 搭配 lint-staged 來確保程式碼品質。它只對暫存的檔案執行檢查，速度快且不影響開發體驗。面試中提到這個工具組合會是加分項。
+</Callout>
+
+## git blame — 追查歷史
+
+`git blame` 逐行顯示檔案的最後修改者與修改時間，幫助你了解每一行程式碼的來龍去脈。
+
+### 基本用法
+
+```bash
+# 查看整個檔案的 blame
+git blame index.js
+
+# 查看特定行範圍
+git blame -L 10,20 index.js
+
+# 顯示 email 而非姓名
+git blame -e index.js
+
+# 忽略空白變更
+git blame -w index.js
+
+# 追蹤程式碼移動（檔案重新命名）
+git blame -C index.js
+
+# 追蹤跨檔案的程式碼移動
+git blame -C -C index.js
+```
+
+### 輸出解讀
+
+```bash
+git blame src/utils.js
+# a1b2c3d4 (Alice  2024-01-15  5) function formatDate(date) {
+# e4f5g6h8 (Bob    2024-02-20  6)   const options = { year: 'numeric' };
+# a1b2c3d4 (Alice  2024-01-15  7)   return date.toLocaleDateString('zh-TW', options);
+# i7j8k9l0 (Carol  2024-03-01  8) }
+```
+
+每行包含：提交 hash、作者、日期、行號、程式碼內容。
+
+### 搭配 git log 深入調查
+
+```bash
+# 找到修改者後，查看完整提交
+git log -1 a1b2c3d4
+
+# 查看該提交的完整差異
+git show a1b2c3d4
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模擬 bisect 二分搜尋過程"
+  defaultJS={`// 模擬 git bisect 二分搜尋找出引入 bug 的提交
+function simulateBisect() {
+  // 建立 20 個提交的歷史
+  const commits = [];
+  const BUG_INTRODUCED_AT = 13; // 第 13 個提交引入了 bug
+
+  for (let i = 0; i < 20; i++) {
+    commits.push({
+      index: i,
+      hash: Math.random().toString(36).substr(2, 7),
+      message: 'commit #' + i + (i === BUG_INTRODUCED_AT ? ' ← (引入 bug 的提交)' : ''),
+      hasBug: i >= BUG_INTRODUCED_AT
+    });
+  }
+
+  console.log('=== 提交歷史（共 ' + commits.length + ' 個提交）===');
+  console.log('已知：commit #0 (good) ... commit #19 (bad)');
+  console.log('目標：找出哪個提交引入了 bug\\n');
+
+  // 開始 bisect
+  console.log('$ git bisect start');
+  console.log('$ git bisect bad   (HEAD = commit #19)');
+  console.log('$ git bisect good  (commit #0)\\n');
+
+  let low = 0;
+  let high = commits.length - 1;
+  let steps = 0;
+
+  while (low < high) {
+    steps++;
+    const mid = Math.floor((low + high) / 2);
+    const commit = commits[mid];
+    const result = commit.hasBug ? 'bad' : 'good';
+
+    console.log(
+      '步驟 ' + steps + ': 測試 commit #' + mid +
+      ' (' + commit.hash + ') → ' + result +
+      '  [搜尋範圍: #' + low + ' ~ #' + high +
+      ', 剩餘 ' + (high - low) + ' 個]'
+    );
+
+    if (commit.hasBug) {
+      high = mid;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  console.log('\\n=== 搜尋完成！===');
+  console.log(
+    commits[low].hash + ' is the first bad commit'
+  );
+  console.log('commit #' + low + ': ' + commits[low].message);
+  console.log(
+    '\\n只花了 ' + steps + ' 步就從 ' +
+    commits.length + ' 個提交中找到了 bug！'
+  );
+  console.log(
+    '（線性搜尋最多需要 ' + commits.length + ' 步）'
+  );
+
+  // 比較效率
+  console.log('\\n=== 效率比較 ===');
+  const sizes = [10, 100, 1000, 10000];
+  console.log('提交數量 | 線性搜尋 | 二分搜尋');
+  console.log('---------|---------|--------');
+  sizes.forEach(n => {
+    const linear = n;
+    const binary = Math.ceil(Math.log2(n));
+    console.log(
+      String(n).padStart(8) + ' | ' +
+      String(linear).padStart(7) + ' | ' +
+      String(binary).padStart(6)
+    );
+  });
+
+  // 模擬自動 bisect
+  console.log('\\n=== 自動 bisect 模擬 ===');
+  console.log('$ git bisect start HEAD v1.0.0');
+  console.log('$ git bisect run npm test');
+  console.log('');
+  console.log('Git 自動執行測試腳本，完全不需要人工介入！');
+  console.log('腳本回傳 0 → good，非 0 → bad');
+  console.log('適合有完善測試覆蓋的專案。');
+}
+
+simulateBisect();`}
+/>
+
+## 進階技巧速查表
+
+| 指令 | 用途 |
+|------|------|
+| `git cherry-pick <hash>` | 將指定提交套用到目前分支 |
+| `git rebase -i HEAD~n` | 互動式修改最近 n 個提交 |
+| `git bisect start` | 開始二分搜尋 bug |
+| `git submodule add <url>` | 新增子模組 |
+| `git worktree add <path> <branch>` | 建立新工作樹 |
+| `git blame <file>` | 查看檔案每行的修改歷史 |
+| `git hooks (pre-commit)` | 提交前自動執行檢查 |
+
+## 面試重點整理
+
+1. **cherry-pick**：摘取特定提交到目前分支，產生新的提交 hash；適合跨分支套用 hotfix
+2. **interactive rebase**：可以 squash（合併）、reword（改訊息）、edit（改內容）、drop（刪除）提交；不要對已推送的提交使用
+3. **git bisect**：利用二分搜尋法在 O(log n) 時間內找出引入 bug 的提交；支援自動化腳本
+4. **submodule vs monorepo**：submodule 適合引用外部相依；monorepo（如 npm workspaces、turborepo）適合管理多個內部套件
+5. **git hooks + Husky**：pre-commit hook 搭配 lint-staged 是前端專案的標準實踐，確保程式碼品質
+
+以上就是 Git 進階技巧的完整介紹。結合前面幾篇的基礎知識，你已經具備了在實際專案中靈活運用 Git 的能力。持續練習這些指令，它們會成為你開發工作中不可或缺的利器。

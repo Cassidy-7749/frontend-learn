@@ -1,0 +1,612 @@
+# 泛型
+
+泛型（Generics）是 TypeScript 最強大的特性之一，它讓我們能夠撰寫可重複使用、型別安全的程式碼。透過泛型，函式、介面和類別可以適用於多種型別，同時保留完整的型別資訊。
+
+## 為什麼需要泛型？
+
+假設我們要寫一個函式，接收一個值並原封不動地回傳。如果不使用泛型，我們面臨兩個選擇：
+
+```ts
+// 方案一：為每種型別寫一個函式
+function identityString(value: string): string {
+  return value;
+}
+function identityNumber(value: number): number {
+  return value;
+}
+
+// 方案二：使用 any（失去型別安全）
+function identityAny(value: any): any {
+  return value;
+}
+```
+
+方案一太過冗餘，方案二則完全失去了型別檢查的好處。泛型提供了第三條路：
+
+```ts
+// 泛型方案：既靈活又安全
+function identity<T>(value: T): T {
+  return value;
+}
+
+const str = identity('hello');   // 推斷為 string
+const num = identity(42);        // 推斷為 number
+const arr = identity([1, 2, 3]); // 推斷為 number[]
+```
+
+`<T>` 就像是型別的「變數」，在呼叫時由 TypeScript 自動推斷或手動指定。
+
+## 泛型函式
+
+泛型函式是最常見的泛型使用場景。型別參數寫在函式名稱後的角括號中：
+
+```ts
+// 基本泛型函式
+function firstElement<T>(arr: T[]): T | undefined {
+  return arr[0];
+}
+
+const first = firstElement([1, 2, 3]);       // number | undefined
+const firstStr = firstElement(['a', 'b']);    // string | undefined
+
+// 箭頭函式語法
+const lastElement = <T>(arr: T[]): T | undefined => {
+  return arr[arr.length - 1];
+};
+
+// 明確指定型別參數
+const result = firstElement<string>(['hello', 'world']);
+```
+
+### 泛型函式的型別推斷
+
+TypeScript 會根據傳入的引數自動推斷型別參數：
+
+```ts
+function map<T, U>(arr: T[], fn: (item: T) => U): U[] {
+  return arr.map(fn);
+}
+
+// T 被推斷為 number，U 被推斷為 string
+const strings = map([1, 2, 3], (n) => n.toString());
+
+// T 被推斷為 string，U 被推斷為 number
+const lengths = map(['hello', 'world'], (s) => s.length);
+```
+
+## 泛型介面與型別別名
+
+泛型同樣可以用在介面和型別別名上：
+
+```ts
+// 泛型介面
+interface ApiResponse<T> {
+  data: T;
+  status: number;
+  message: string;
+  timestamp: Date;
+}
+
+// 使用時指定具體型別
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+type UserResponse = ApiResponse<User>;
+type UserListResponse = ApiResponse<User[]>;
+
+// 泛型型別別名
+type Pair<T, U> = {
+  first: T;
+  second: U;
+};
+
+const pair: Pair<string, number> = {
+  first: 'age',
+  second: 30,
+};
+
+// 泛型與函式型別結合
+type Transformer<T, U> = (input: T) => U;
+const toStr: Transformer<number, string> = (n) => n.toString();
+```
+
+<Callout type="info" title="泛型命名慣例">
+常見的型別參數命名慣例：`T`（Type）、`U`（第二個型別）、`K`（Key）、`V`（Value）、`E`（Element）、`R`（Return）。雖然可以用任何名稱，但遵守慣例能讓程式碼更易讀。
+</Callout>
+
+## 泛型類別
+
+類別也可以使用泛型來建立可重複使用的資料結構：
+
+```ts
+class Stack<T> {
+  private items: T[] = [];
+
+  push(item: T): void {
+    this.items.push(item);
+  }
+
+  pop(): T | undefined {
+    return this.items.pop();
+  }
+
+  peek(): T | undefined {
+    return this.items[this.items.length - 1];
+  }
+
+  get size(): number {
+    return this.items.length;
+  }
+}
+
+const numberStack = new Stack<number>();
+numberStack.push(1);
+numberStack.push(2);
+const top = numberStack.pop(); // number | undefined
+
+const stringStack = new Stack<string>();
+stringStack.push('hello');
+// stringStack.push(42); // 錯誤！不能將 number 推入 string 堆疊
+```
+
+### 泛型類別搭配介面
+
+```ts
+interface Repository<T> {
+  findById(id: string): Promise<T | null>;
+  findAll(): Promise<T[]>;
+  create(item: T): Promise<T>;
+  update(id: string, item: Partial<T>): Promise<T>;
+  delete(id: string): Promise<void>;
+}
+
+class UserRepository implements Repository<User> {
+  async findById(id: string): Promise<User | null> {
+    // 實作...
+    return null;
+  }
+  async findAll(): Promise<User[]> {
+    return [];
+  }
+  async create(item: User): Promise<User> {
+    return item;
+  }
+  async update(id: string, item: Partial<User>): Promise<User> {
+    return { id: 0, name: '', email: '' };
+  }
+  async delete(id: string): Promise<void> {}
+}
+```
+
+## 泛型約束（extends）
+
+有時我們需要限制泛型可以接受的型別範圍。使用 `extends` 關鍵字可以設定約束：
+
+```ts
+// 約束 T 必須有 length 屬性
+function logLength<T extends { length: number }>(item: T): T {
+  console.log(`長度：${item.length}`);
+  return item;
+}
+
+logLength('hello');      // OK，string 有 length
+logLength([1, 2, 3]);   // OK，陣列有 length
+logLength({ length: 5, name: 'test' }); // OK
+// logLength(42);        // 錯誤！number 沒有 length
+
+// 約束 T 必須是某個介面的子型別
+interface HasId {
+  id: number;
+}
+
+function findById<T extends HasId>(items: T[], id: number): T | undefined {
+  return items.find(item => item.id === id);
+}
+
+const users = [
+  { id: 1, name: 'Alice', role: 'admin' },
+  { id: 2, name: 'Bob', role: 'user' },
+];
+
+const found = findById(users, 1);
+// found 的型別保留了完整屬性：{ id: number; name: string; role: string } | undefined
+```
+
+<Callout type="tip" title="泛型約束的妙用">
+泛型約束不只能用基本介面，也可以用其他型別參數。例如 `<T, K extends keyof T>` 確保 K 一定是 T 的鍵名之一，這是 TypeScript 許多內建工具型別的基礎。
+</Callout>
+
+## 泛型預設值
+
+泛型參數可以設定預設值，當呼叫者不指定型別時自動使用：
+
+```ts
+// 預設型別為 string
+interface Container<T = string> {
+  value: T;
+  label: string;
+}
+
+const strContainer: Container = { value: 'hello', label: 'text' };
+const numContainer: Container<number> = { value: 42, label: 'count' };
+
+// 函式泛型預設值
+function createArray<T = number>(length: number, fill: T): T[] {
+  return new Array(length).fill(fill);
+}
+
+const nums = createArray(3, 0);        // number[]（推斷 + 預設）
+const strs = createArray(3, 'hello');  // string[]（自動推斷覆蓋預設）
+
+// 搭配約束使用
+interface EventMap {
+  click: { x: number; y: number };
+  focus: { target: string };
+}
+
+function on<K extends keyof EventMap = 'click'>(
+  event: K,
+  handler: (data: EventMap[K]) => void
+): void {
+  // 實作...
+}
+```
+
+## 多個型別參數
+
+泛型函式可以接受多個型別參數，每個參數代表不同的型別角色：
+
+```ts
+// 兩個型別參數
+function swap<T, U>(pair: [T, U]): [U, T] {
+  return [pair[1], pair[0]];
+}
+
+const swapped = swap(['hello', 42]); // [number, string]
+
+// 三個型別參數
+function zipWith<A, B, C>(
+  as: A[],
+  bs: B[],
+  fn: (a: A, b: B) => C
+): C[] {
+  const length = Math.min(as.length, bs.length);
+  const result: C[] = [];
+  for (let i = 0; i < length; i++) {
+    result.push(fn(as[i], bs[i]));
+  }
+  return result;
+}
+
+const result = zipWith(
+  [1, 2, 3],
+  ['a', 'b', 'c'],
+  (n, s) => `${s}${n}`
+); // string[]
+```
+
+## keyof 與泛型結合
+
+`keyof` 運算子與泛型結合，可以建立型別安全的物件操作：
+
+```ts
+// 型別安全的屬性存取
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+
+const user = { name: 'Alice', age: 30, email: 'alice@example.com' };
+const name = getProperty(user, 'name');   // string
+const age = getProperty(user, 'age');     // number
+// getProperty(user, 'phone');            // 錯誤！'phone' 不在 keyof User 中
+
+// 型別安全的屬性設定
+function setProperty<T, K extends keyof T>(
+  obj: T,
+  key: K,
+  value: T[K]
+): void {
+  obj[key] = value;
+}
+
+setProperty(user, 'name', 'Bob');  // OK
+// setProperty(user, 'age', 'thirty'); // 錯誤！'thirty' 不是 number
+
+// 從物件中挑選屬性
+function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+  const result = {} as Pick<T, K>;
+  keys.forEach(key => {
+    result[key] = obj[key];
+  });
+  return result;
+}
+
+const subset = pick(user, ['name', 'email']);
+// 型別為 { name: string; email: string }
+```
+
+## 常見泛型模式
+
+### API 回應封裝
+
+```ts
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+interface ErrorResponse {
+  code: string;
+  message: string;
+  details?: Record<string, string[]>;
+}
+
+type ApiResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: ErrorResponse };
+
+async function fetchApi<T>(url: string): Promise<ApiResult<T>> {
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    return { success: true, data: data as T };
+  } catch (err) {
+    return {
+      success: false,
+      error: { code: 'FETCH_ERROR', message: String(err) },
+    };
+  }
+}
+
+// 使用時自動獲得正確的型別
+const result = await fetchApi<User[]>('/api/users');
+if (result.success) {
+  result.data; // User[]
+} else {
+  result.error; // ErrorResponse
+}
+```
+
+### 陣列工具函式
+
+```ts
+// 分組
+function groupBy<T, K extends string | number>(
+  arr: T[],
+  keyFn: (item: T) => K
+): Record<K, T[]> {
+  return arr.reduce((acc, item) => {
+    const key = keyFn(item);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {} as Record<K, T[]>);
+}
+
+// 去重
+function uniqueBy<T>(arr: T[], keyFn: (item: T) => unknown): T[] {
+  const seen = new Set();
+  return arr.filter(item => {
+    const key = keyFn(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+```
+
+## 泛型工具函式實作
+
+以下是一些實用的泛型工具函式：
+
+```ts
+// 深層凍結
+function deepFreeze<T extends object>(obj: T): Readonly<T> {
+  Object.freeze(obj);
+  Object.values(obj).forEach(value => {
+    if (typeof value === 'object' && value !== null) {
+      deepFreeze(value);
+    }
+  });
+  return obj;
+}
+
+// 安全的 JSON 解析
+function safeJsonParse<T>(
+  json: string,
+  validator: (data: unknown) => data is T
+): T | null {
+  try {
+    const data = JSON.parse(json);
+    return validator(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+// 建立型別安全的事件發射器
+class TypedEventEmitter<Events extends Record<string, unknown>> {
+  private handlers: Partial<{
+    [K in keyof Events]: ((data: Events[K]) => void)[];
+  }> = {};
+
+  on<K extends keyof Events>(
+    event: K,
+    handler: (data: Events[K]) => void
+  ): void {
+    if (!this.handlers[event]) {
+      this.handlers[event] = [];
+    }
+    this.handlers[event]!.push(handler);
+  }
+
+  emit<K extends keyof Events>(event: K, data: Events[K]): void {
+    this.handlers[event]?.forEach(handler => handler(data));
+  }
+}
+
+// 使用
+interface AppEvents {
+  login: { userId: string; timestamp: Date };
+  logout: { userId: string };
+  error: { message: string; code: number };
+}
+
+const emitter = new TypedEventEmitter<AppEvents>();
+emitter.on('login', (data) => {
+  console.log(data.userId); // 型別安全
+});
+```
+
+<CodePlayground
+  title="泛型概念的 JS 模擬"
+  defaultJS={`// === 泛型概念：用函式模擬型別安全的容器 ===
+
+// 模擬泛型容器（Box<T>）
+function createBox(value) {
+  return {
+    getValue() { return value; },
+    map(fn) { return createBox(fn(value)); },
+    toString() { return 'Box(' + JSON.stringify(value) + ')'; }
+  };
+}
+
+const numBox = createBox(42);
+console.log('numBox:', numBox.toString());
+const strBox = numBox.map(n => n.toString());
+console.log('mapped to string:', strBox.toString());
+console.log('---');
+
+// 模擬泛型 Stack<T>
+function createStack() {
+  const items = [];
+  return {
+    push(item) { items.push(item); },
+    pop() { return items.pop(); },
+    peek() { return items[items.length - 1]; },
+    get size() { return items.length; },
+    toArray() { return [...items]; }
+  };
+}
+
+const stack = createStack();
+stack.push(10);
+stack.push(20);
+stack.push(30);
+console.log('Stack peek:', stack.peek());
+console.log('Stack pop:', stack.pop());
+console.log('Stack size:', stack.size);
+console.log('---');
+
+// 模擬 keyof + 泛型的 getProperty
+function getProperty(obj, key) {
+  if (!(key in obj)) {
+    throw new Error(key + ' 不存在於物件中');
+  }
+  return obj[key];
+}
+
+const user = { name: 'Alice', age: 30, email: 'alice@test.com' };
+console.log('name:', getProperty(user, 'name'));
+console.log('age:', getProperty(user, 'age'));
+try {
+  getProperty(user, 'phone');
+} catch (e) {
+  console.log('錯誤:', e.message);
+}
+console.log('---');
+
+// 模擬泛型 groupBy
+function groupBy(arr, keyFn) {
+  return arr.reduce((acc, item) => {
+    const key = keyFn(item);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+}
+
+const people = [
+  { name: 'Alice', dept: '工程' },
+  { name: 'Bob', dept: '設計' },
+  { name: 'Charlie', dept: '工程' },
+  { name: 'Diana', dept: '設計' },
+];
+const grouped = groupBy(people, p => p.dept);
+console.log('按部門分組:', JSON.stringify(grouped, null, 2));`}
+/>
+
+## 泛型最佳實踐
+
+### 不要過度使用泛型
+
+```ts
+// 不好：不必要的泛型
+function bad<T extends number>(x: T): T {
+  return x;
+}
+
+// 好：直接用具體型別
+function good(x: number): number {
+  return x;
+}
+
+// 好的泛型使用：型別參數在多處使用
+function filter<T>(arr: T[], predicate: (item: T) => boolean): T[] {
+  return arr.filter(predicate);
+}
+```
+
+### 善用型別推斷
+
+```ts
+// 不好：強迫呼叫者指定型別
+function createPair<T, U>(first: T, second: U): [T, U] {
+  return [first, second];
+}
+// 好：讓 TypeScript 自動推斷
+const pair = createPair('hello', 42); // 自動推斷為 [string, number]
+
+// 不好：在可以推斷時手動指定
+const p = createPair<string, number>('hello', 42); // 冗餘
+```
+
+### 使用有意義的型別參數名稱
+
+```ts
+// 在複雜場景中使用描述性名稱
+function transform<Input, Output>(
+  data: Input,
+  transformer: (input: Input) => Output
+): Output {
+  return transformer(data);
+}
+
+// 事件系統中使用語義化名稱
+type EventHandler<EventType, ReturnType = void> = (
+  event: EventType
+) => ReturnType;
+```
+
+<Callout type="warning" title="常見泛型錯誤">
+避免建立「只出現一次」的型別參數。如果一個型別參數只在函式簽名中出現一次，它可能不需要是泛型的。泛型的價值在於「關聯」多個位置的型別——輸入與輸出、參數之間等。
+</Callout>
+
+## 面試重點整理
+
+1. **泛型是什麼？** 泛型是型別的「參數化」，讓程式碼在保持型別安全的同時能重複使用於不同型別
+2. **泛型約束** 使用 `extends` 限制泛型的範圍，確保型別參數具備必要的屬性或結構
+3. **keyof 與泛型** `K extends keyof T` 是建立型別安全物件操作的關鍵模式
+4. **泛型推斷** TypeScript 通常能自動推斷型別參數，不需要每次都手動指定
+5. **何時使用泛型** 當型別參數在多個位置使用時（建立型別關聯），泛型才有價值
+6. **泛型 vs any** 泛型保留型別資訊，any 則完全放棄型別檢查，兩者有本質區別
+
+下一篇我們將探討 TypeScript 的內建工具型別，了解如何利用 `Partial`、`Pick`、`Record` 等工具型別高效地轉換和操作型別。

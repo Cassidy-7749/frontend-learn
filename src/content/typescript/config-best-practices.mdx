@@ -1,0 +1,833 @@
+# tsconfig 與最佳實踐
+
+`tsconfig.json` 是 TypeScript 專案的核心配置檔，控制著編譯器的行為。正確的配置能提升開發體驗、確保型別安全，並優化建置效能。本篇將全面解析 tsconfig 的各個選項，並提供不同專案類型的推薦配置。
+
+## tsconfig.json 結構
+
+tsconfig.json 的基本結構如下：
+
+```json
+{
+  "compilerOptions": {
+    // 編譯器選項（最重要的部分）
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "extends": "./tsconfig.base.json",
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
+```
+
+### 頂層欄位說明
+
+```json
+{
+  // 繼承基礎配置
+  "extends": "@tsconfig/recommended/tsconfig.json",
+
+  // 指定要編譯的檔案（glob 模式）
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
+
+  // 排除的檔案
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+
+  // 明確指定檔案清單（很少使用）
+  "files": ["src/index.ts"],
+
+  // 專案參考（用於 monorepo）
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/ui" }
+  ],
+
+  "compilerOptions": { /* ... */ }
+}
+```
+
+## target / module / moduleResolution
+
+這三個選項是最基礎也最重要的配置：
+
+### target
+
+指定編譯輸出的 JavaScript 版本：
+
+```json
+{
+  "compilerOptions": {
+    // 常用目標
+    "target": "ES2020",     // 現代瀏覽器
+    // "target": "ES2022",  // 最新特性（top-level await、class fields）
+    // "target": "ES5",     // 舊版瀏覽器相容
+    // "target": "ESNext",  // 最新版本（隨 TypeScript 更新）
+  }
+}
+```
+
+```ts
+// target 影響的是語法轉換，不是 API polyfill
+// ES2020 target 下，可選鏈和 nullish coalescing 不會被轉換：
+const name = user?.profile?.name ?? 'Anonymous';
+
+// ES5 target 下，會被轉換為：
+// var _a, _b;
+// var name = ((_b = (_a = user) === null ... ) !== null ... ) ? ... : 'Anonymous';
+```
+
+### module
+
+指定輸出的模組格式：
+
+```json
+{
+  "compilerOptions": {
+    // 前端專案（搭配 bundler）
+    "module": "ESNext",
+
+    // Node.js 專案
+    // "module": "Node16",     // Node.js 16+
+    // "module": "NodeNext",   // 最新 Node.js
+
+    // 舊版
+    // "module": "CommonJS",   // require/module.exports
+  }
+}
+```
+
+### moduleResolution
+
+指定模組解析策略：
+
+```json
+{
+  "compilerOptions": {
+    // 搭配 bundler（Vite、webpack、esbuild）
+    "moduleResolution": "bundler",
+
+    // 搭配 Node.js
+    // "moduleResolution": "node16",   // 或 "nodenext"
+
+    // 舊版（不推薦新專案使用）
+    // "moduleResolution": "node",     // 又稱 "node10"
+  }
+}
+```
+
+<Callout type="info" title="module 與 moduleResolution 的搭配">
+`module` 和 `moduleResolution` 需要正確搭配。一般規則：前端專案用 `ESNext` + `bundler`；Node.js 專案用 `Node16`/`NodeNext` + `node16`/`nodenext`。錯誤的搭配會導致模組解析問題。
+</Callout>
+
+## strict 模式及其子選項
+
+`strict: true` 是一個總開關，啟用所有嚴格型別檢查：
+
+```json
+{
+  "compilerOptions": {
+    "strict": true
+    // 等同於同時啟用以下所有選項：
+  }
+}
+```
+
+### 各子選項詳解
+
+```ts
+// 1. strictNullChecks — 最重要的選項
+// null 和 undefined 不再能賦值給任意型別
+let name: string = null;      // 錯誤！
+let name2: string | null = null; // 正確
+
+// 2. noImplicitAny — 禁止隱含的 any
+function add(a, b) { return a + b; }  // 錯誤！參數隱含 any
+function add2(a: number, b: number) { return a + b; }  // 正確
+
+// 3. strictFunctionTypes — 函式參數嚴格檢查（逆變）
+type Handler = (e: MouseEvent) => void;
+const handler: Handler = (e: Event) => {};  // 錯誤！Event 不能賦值給 MouseEvent
+
+// 4. strictBindCallApply — bind/call/apply 的參數型別檢查
+function greet(name: string, age: number) { /* ... */ }
+greet.call(null, 'Alice', '30');  // 錯誤！'30' 不是 number
+
+// 5. strictPropertyInitialization — 類別屬性必須初始化
+class User {
+  name: string;     // 錯誤！未在建構函式中初始化
+  name2!: string;   // 使用 ! 斷言「稍後會初始化」
+  age = 0;          // 正確：有預設值
+  constructor(public email: string) {}  // 正確：在建構函式中賦值
+}
+
+// 6. noImplicitThis — 禁止隱含的 this 為 any
+function onClick() {
+  console.log(this.value);  // 錯誤！this 隱含 any
+}
+
+// 7. alwaysStrict — 在每個檔案加入 "use strict"
+
+// 8. useUnknownInCatchVariables — catch 的 error 型別為 unknown
+try {
+  // ...
+} catch (e) {
+  // strict 模式下 e 是 unknown，需要檢查後使用
+  if (e instanceof Error) {
+    console.log(e.message);
+  }
+}
+```
+
+### 額外的嚴格選項（非 strict 包含）
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+
+    // 額外推薦啟用
+    "noUncheckedIndexedAccess": true,  // 索引存取可能為 undefined
+    "noImplicitOverride": true,         // 覆寫方法必須標記 override
+    "noFallthroughCasesInSwitch": true, // switch 不允許 fallthrough
+    "forceConsistentCasingInFileNames": true, // 檔名大小寫一致
+    "exactOptionalPropertyTypes": true  // 可選屬性不包含 undefined
+  }
+}
+```
+
+```ts
+// noUncheckedIndexedAccess 的效果
+const arr = [1, 2, 3];
+const val = arr[0];  // number | undefined（不是 number）
+
+const obj: Record<string, number> = { a: 1 };
+const v = obj['b'];  // number | undefined
+
+// noImplicitOverride 的效果
+class Animal {
+  move() { /* ... */ }
+}
+class Dog extends Animal {
+  override move() { /* ... */ }  // 必須標記 override
+}
+```
+
+## paths 別名設定
+
+路徑別名讓匯入更簡潔：
+
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@hooks/*": ["./src/hooks/*"],
+      "@types/*": ["./src/types/*"],
+      "~/*": ["./src/*"]
+    }
+  }
+}
+```
+
+```ts
+// 使用前
+import { Button } from '../../../components/Button';
+import { formatDate } from '../../utils/date';
+
+// 使用後
+import { Button } from '@/components/Button';
+import { formatDate } from '@utils/date';
+```
+
+<Callout type="warning" title="paths 只是型別解析">
+tsconfig 的 `paths` 只告訴 TypeScript 如何解析型別，不會影響實際的模組打包。你需要在 bundler 中也配置對應的別名：Vite 用 `resolve.alias`，webpack 用 `resolve.alias`，或使用 `tsconfig-paths` 套件。
+</Callout>
+
+## include / exclude
+
+```json
+{
+  // include 使用 glob 模式
+  "include": [
+    "src",                // 等同 src/**/*
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "types/**/*.d.ts",
+    "env.d.ts"
+  ],
+
+  // exclude 排除不需要編譯的檔案
+  "exclude": [
+    "node_modules",       // 預設已排除
+    "dist",
+    "build",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/__tests__/**"
+  ]
+}
+```
+
+```ts
+// 常見問題：某個 .d.ts 沒有被載入
+// 確認它在 include 範圍內
+// 或在 tsconfig 中明確加入 files
+
+// 常見問題：測試檔案影響了主程式碼
+// 使用 exclude 排除，或建立獨立的 tsconfig.test.json
+```
+
+## 常用配置範本
+
+### 前端專案（React + Vite）
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "env.d.ts"],
+  "exclude": ["node_modules"]
+}
+```
+
+### Node.js 專案
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "Node16",
+    "moduleResolution": "node16",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+### Library（供他人使用的套件）
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "declarationDir": "./dist/types",
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
+```
+
+## JavaScript 漸進遷移
+
+將 JavaScript 專案逐步遷移到 TypeScript：
+
+### 第一階段：啟用 allowJs 和 checkJs
+
+```json
+{
+  "compilerOptions": {
+    "allowJs": true,    // 允許編譯 .js 檔案
+    "checkJs": false,   // 先不檢查 JS（之後再開）
+    "strict": false,    // 先不啟用嚴格模式
+
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src"]
+}
+```
+
+### 第二階段：逐步啟用 checkJs
+
+```json
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,    // 開始檢查 JS 檔案
+
+    // 在個別 JS 檔案頂部加入 // @ts-nocheck 跳過檢查
+    // 逐一移除 @ts-nocheck 並修復錯誤
+  }
+}
+```
+
+```js
+// @ts-check
+// 在 JS 檔案頂部加入 @ts-check 啟用型別檢查
+
+/** @type {string} */
+let name = 'Alice';
+
+/**
+ * @param {number} a
+ * @param {number} b
+ * @returns {number}
+ */
+function add(a, b) {
+  return a + b;
+}
+
+// JSDoc 註解提供型別資訊，無需改檔名為 .ts
+```
+
+### 第三階段：將 .js 改為 .ts
+
+```ts
+// 逐一將檔案從 .js 改為 .ts
+// 優先遷移：
+// 1. 共用工具函式（utils）
+// 2. 型別定義（建立 .d.ts）
+// 3. 核心商業邏輯
+// 4. 元件（.jsx → .tsx）
+// 5. 測試檔案
+```
+
+## 嚴格模式漸進啟用
+
+如果無法一次啟用 `strict: true`，可以逐步開啟：
+
+```json
+{
+  "compilerOptions": {
+    "strict": false,
+
+    // 第一批（影響最大，但最有價值）
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+
+    // 第二批
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+
+    // 第三批
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+
+    // 最終：用 strict: true 取代所有個別選項
+    // "strict": true
+  }
+}
+```
+
+```ts
+// 遷移技巧：使用 // @ts-expect-error 標記暫時無法修復的錯誤
+// @ts-expect-error — TODO: 修復此型別錯誤
+const result = legacyFunction(data);
+
+// 使用 any 作為暫時的過渡
+function processData(input: any): any {
+  // TODO: 添加正確型別
+  return input.transform();
+}
+```
+
+## 效能優化
+
+### incremental
+
+```json
+{
+  "compilerOptions": {
+    "incremental": true,           // 增量編譯
+    "tsBuildInfoFile": "./.tsbuildinfo"  // 快取檔案位置
+  }
+}
+```
+
+增量編譯會建立 `.tsbuildinfo` 檔案，記錄上次編譯結果。下次編譯時只處理有變更的檔案，大幅加速建置時間。
+
+### composite
+
+```json
+// packages/core/tsconfig.json
+{
+  "compilerOptions": {
+    "composite": true,     // 啟用專案參考
+    "declaration": true,   // composite 要求啟用
+    "declarationMap": true
+  }
+}
+
+// tsconfig.json（根目錄）
+{
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/app" }
+  ]
+}
+```
+
+```bash
+# 使用 --build 模式編譯
+tsc --build              # 建置所有專案
+tsc --build --watch      # 監聽模式
+tsc --build --clean      # 清除建置快取
+```
+
+### 其他效能建議
+
+```json
+{
+  "compilerOptions": {
+    "skipLibCheck": true,   // 跳過 .d.ts 檔案的型別檢查（大幅加速）
+    "incremental": true,     // 增量編譯
+
+    // 在開發時可以考慮
+    "noEmit": true           // 搭配 bundler 時不需要 tsc 輸出
+  },
+
+  // 限制 include 範圍，避免掃描不必要的檔案
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
+```
+
+## 常見錯誤與解法
+
+### TS2307: Cannot find module
+
+```ts
+// 原因：TypeScript 找不到模組
+
+// 解法 1：安裝 @types
+// npm install --save-dev @types/lodash
+
+// 解法 2：建立宣告檔
+// src/types/my-module.d.ts
+declare module 'my-module' {
+  export function doThing(): void;
+}
+
+// 解法 3：檢查 tsconfig paths 和 moduleResolution 設定
+```
+
+### TS2339: Property does not exist
+
+```ts
+// 原因：存取不存在的屬性
+
+// 解法 1：型別斷言（確定型別時使用）
+const element = document.getElementById('app') as HTMLDivElement;
+element.style.display = 'none';
+
+// 解法 2：型別守衛
+if (element instanceof HTMLDivElement) {
+  element.style.display = 'none';
+}
+
+// 解法 3：擴充型別定義
+declare global {
+  interface Window {
+    myCustomProp: string;
+  }
+}
+```
+
+### TS2345: Argument type is not assignable
+
+```ts
+// 原因：傳入的參數型別不符
+
+// 解法 1：修正參數型別
+function greet(name: string) { /* ... */ }
+greet(String(42));  // 轉換型別
+
+// 解法 2：使用泛型
+function identity<T>(value: T): T { return value; }
+
+// 解法 3：檢查是否需要型別收窄
+function process(input: string | number) {
+  if (typeof input === 'string') {
+    input.toUpperCase();  // 現在 TypeScript 知道是 string
+  }
+}
+```
+
+### TS7006: Parameter implicitly has an 'any' type
+
+```ts
+// 原因：啟用 noImplicitAny 後，未標註型別的參數
+
+// 解法：添加型別標註
+// 錯誤：
+// array.forEach(item => { ... });
+// 正確：
+const numbers: number[] = [1, 2, 3];
+numbers.forEach((item: number) => { /* ... */ });
+// 或讓 TypeScript 自動推導（如果陣列已有型別）
+numbers.forEach(item => { /* item 自動推導為 number */ });
+```
+
+## ESLint 與 TypeScript
+
+### 設定 typescript-eslint
+
+```js
+// eslint.config.js（Flat Config）
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  // 更嚴格的規則集
+  // ...tseslint.configs.strictTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.json',
+      },
+    },
+  }
+);
+```
+
+### 推薦規則
+
+```js
+// 常用的 TypeScript ESLint 規則
+{
+  rules: {
+    // 禁止使用 any
+    '@typescript-eslint/no-explicit-any': 'warn',
+
+    // 要求函式回傳型別標註
+    '@typescript-eslint/explicit-function-return-type': 'off',
+
+    // 要求匯出函式有回傳型別
+    '@typescript-eslint/explicit-module-boundary-types': 'warn',
+
+    // 禁止未使用的變數
+    '@typescript-eslint/no-unused-vars': ['error', {
+      argsIgnorePattern: '^_',
+      varsIgnorePattern: '^_',
+    }],
+
+    // 偏好 interface 而非 type（團隊風格）
+    '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
+
+    // 強制使用 type-only import
+    '@typescript-eslint/consistent-type-imports': ['error', {
+      prefer: 'type-imports',
+    }],
+
+    // 禁止非 null 斷言（!）
+    '@typescript-eslint/no-non-null-assertion': 'warn',
+
+    // 要求正確處理 Promise
+    '@typescript-eslint/no-floating-promises': 'error',
+    '@typescript-eslint/no-misused-promises': 'error',
+
+    // 禁止不必要的型別斷言
+    '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+  }
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="strict 模式各選項效果的 JS 對照"
+  defaultJS={`// === 模擬 TypeScript strict 模式的檢查效果 ===
+
+// TypeScript 的型別檢查在編譯時期進行
+// 這裡用 JavaScript 運行時檢查來模擬概念
+
+function typeCheck(value, expectedType, fieldName) {
+  const actualType = value === null ? 'null' :
+    value === undefined ? 'undefined' : typeof value;
+  if (actualType !== expectedType) {
+    return fieldName + ': 期望 ' + expectedType + '，收到 ' + actualType;
+  }
+  return null;
+}
+
+// 1. strictNullChecks 模擬
+console.log('=== strictNullChecks ===');
+
+function strictAssign(value, allowNull) {
+  if (!allowNull && (value === null || value === undefined)) {
+    console.log('  錯誤: 不允許 null/undefined');
+    return false;
+  }
+  console.log('  通過: 值為', JSON.stringify(value));
+  return true;
+}
+
+console.log('string 型別賦值 null:');
+strictAssign(null, false);  // 不允許
+
+console.log('string | null 型別賦值 null:');
+strictAssign(null, true);   // 允許
+
+// 2. noImplicitAny 模擬
+console.log('\\n=== noImplicitAny ===');
+
+function checkFunctionParams(fn) {
+  const fnStr = fn.toString();
+  const params = fnStr.match(/\\(([^)]*)\\)/)?.[1] || '';
+  const paramList = params.split(',').map(p => p.trim()).filter(Boolean);
+
+  paramList.forEach(param => {
+    // 模擬：沒有型別標註 = implicit any
+    if (!param.includes(':') && !param.includes('=')) {
+      console.log('  警告: 參數 "' + param + '" 隱含 any 型別');
+    }
+  });
+}
+
+console.log('function add(a, b):');
+checkFunctionParams(function add(a, b) { return a + b; });
+
+// 3. strictFunctionTypes 模擬
+console.log('\\n=== strictFunctionTypes ===');
+
+function checkFunctionAssignment(source, target) {
+  console.log('  來源參數: ' + source + ' → 目標參數: ' + target);
+  // 函式參數是逆變的：子型別不能賦值給父型別
+  if (source === 'MouseEvent' && target === 'Event') {
+    console.log('  通過: MouseEvent extends Event（安全的收窄）');
+  } else if (source === 'Event' && target === 'MouseEvent') {
+    console.log('  錯誤: Event 不能賦值給 MouseEvent（不安全的擴展）');
+  }
+}
+
+checkFunctionAssignment('MouseEvent', 'Event');
+checkFunctionAssignment('Event', 'MouseEvent');
+
+// 4. useUnknownInCatchVariables 模擬
+console.log('\\n=== useUnknownInCatchVariables ===');
+
+function safeCatch(fn) {
+  try {
+    fn();
+  } catch (e) {
+    // strict 模式下 e 是 unknown，不能直接存取屬性
+    console.log('  catch 中 e 的型別: unknown');
+
+    // 必須先檢查型別
+    if (e instanceof Error) {
+      console.log('  經過 instanceof 檢查後: Error');
+      console.log('  可安全存取 e.message:', e.message);
+    } else if (typeof e === 'string') {
+      console.log('  經過 typeof 檢查後: string');
+      console.log('  值:', e);
+    } else {
+      console.log('  未知錯誤型別，需要進一步處理');
+    }
+  }
+}
+
+safeCatch(() => { throw new Error('測試錯誤'); });
+safeCatch(() => { throw '字串錯誤'; });
+
+// 5. noUncheckedIndexedAccess 模擬
+console.log('\\n=== noUncheckedIndexedAccess ===');
+
+const arr = [1, 2, 3];
+const index = 5;
+
+const value = arr[index];
+console.log('  arr[5] 的值:', value);
+console.log('  啟用此選項後型別為: number | undefined');
+console.log('  必須先檢查:', value !== undefined ? '有值: ' + value : '無值，安全處理');
+
+// 6. 漸進遷移示範
+console.log('\\n=== 漸進遷移策略 ===');
+
+const migrationSteps = [
+  { step: 1, config: 'allowJs: true, checkJs: false', desc: '允許混合 JS/TS' },
+  { step: 2, config: 'checkJs: true', desc: '開始檢查 JS 檔案' },
+  { step: 3, config: 'noImplicitAny: true', desc: '禁止隱含 any' },
+  { step: 4, config: 'strictNullChecks: true', desc: '嚴格 null 檢查' },
+  { step: 5, config: 'strict: true', desc: '完整嚴格模式' },
+];
+
+migrationSteps.forEach(({ step, config, desc }) => {
+  console.log('  步驟 ' + step + ': ' + config);
+  console.log('    → ' + desc);
+});`}
+/>
+
+## 面試重點整理
+
+1. **target vs module** — `target` 決定輸出的 JS 語法版本，`module` 決定模組格式；兩者需搭配 `moduleResolution`
+2. **strict: true** — 啟用所有嚴格檢查，是新專案必備設定
+3. **strictNullChecks** — 最有價值的嚴格選項，讓 `null` 和 `undefined` 成為獨立型別
+4. **paths 只是型別解析** — 需要在 bundler 中也配置對應別名
+5. **incremental 與 composite** — `incremental` 啟用增量編譯，`composite` 搭配 project references 用於 monorepo
+6. **skipLibCheck** — 跳過 `.d.ts` 檔案檢查，大幅加速編譯但可能遺漏型別錯誤
+7. **isolatedModules** — 使用 esbuild/Vite 等單檔案轉譯工具時必須啟用
+8. **漸進遷移** — 從 `allowJs` + `checkJs` 開始，逐步啟用嚴格選項
+9. **noUncheckedIndexedAccess** — 讓索引存取回傳 `T | undefined`，避免越界存取
+10. **typescript-eslint** — 搭配 ESLint 提供更完整的程式碼品質檢查，包括需要型別資訊的規則
+
+## 下一篇預告
+
+恭喜你完成了 TypeScript 系列的學習！接下來可以進入 **React 基礎** 系列，學習如何將 TypeScript 的知識應用到實際的 React 專案開發中，打造型別安全的現代前端應用。

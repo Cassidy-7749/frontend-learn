@@ -1,0 +1,497 @@
+# Interface 與 Type Alias
+
+在 TypeScript 中，`interface` 與 `type`（Type Alias）是定義物件結構與複合型別的兩大核心工具。它們有許多相似之處，但也有一些關鍵差異。本篇將深入比較兩者的語法、能力與適用場景，幫助你在實際專案中做出正確的選擇。
+
+## Interface 基本定義
+
+`interface` 用來描述物件的形狀（shape），定義物件應該具備哪些屬性及其型別：
+
+```ts
+// 基本 interface 定義
+interface User {
+  name: string;
+  age: number;
+  email: string;
+}
+
+// 使用 interface 標註物件
+const alice: User = {
+  name: "Alice",
+  age: 30,
+  email: "alice@example.com"
+};
+
+// 缺少屬性會報錯
+// const bob: User = { name: "Bob", age: 25 };
+// ❌ 缺少 email 屬性
+
+// 多餘屬性也會報錯（物件字面量的額外檢查）
+// const charlie: User = { name: "Charlie", age: 28, email: "c@ex.com", role: "admin" };
+// ❌ 物件字面量不允許未知屬性 'role'
+```
+
+## 可選屬性與唯讀屬性
+
+```ts
+interface Product {
+  // 必要屬性
+  id: number;
+  name: string;
+  price: number;
+
+  // 可選屬性（使用 ?）
+  description?: string;
+  category?: string;
+
+  // 唯讀屬性（使用 readonly）
+  readonly createdAt: Date;
+  readonly sku: string;
+}
+
+const laptop: Product = {
+  id: 1,
+  name: "MacBook Pro",
+  price: 59900,
+  createdAt: new Date(),
+  sku: "MBP-2025-001"
+};
+
+// 可選屬性可以不提供
+// laptop.description 的型別為 string | undefined
+
+// 唯讀屬性不能修改
+// laptop.sku = "NEW-SKU"; // 編譯錯誤！
+
+// 但可以修改非 readonly 的屬性
+laptop.price = 54900; // OK
+```
+
+<Callout type="info" title="readonly 只是編譯期的保護">
+`readonly` 修飾符只在 TypeScript 編譯期生效。編譯為 JavaScript 後，該屬性仍然可以被修改。如果你需要 runtime 的不可變性，請使用 `Object.freeze()` 或不可變資料結構函式庫。
+</Callout>
+
+## 索引簽名（Index Signature）
+
+當物件的屬性名稱不固定時，可以使用索引簽名來定義：
+
+```ts
+// 字串索引簽名
+interface StringMap {
+  [key: string]: string;
+}
+
+const translations: StringMap = {
+  hello: "你好",
+  goodbye: "再見",
+  thanks: "謝謝"
+};
+
+// 數字索引簽名
+interface NumberArray {
+  [index: number]: string;
+}
+
+const colors: NumberArray = ["red", "green", "blue"];
+
+// 混合固定屬性與索引簽名
+interface Config {
+  name: string;
+  version: number;
+  [key: string]: string | number; // 索引簽名的型別必須包含固定屬性的型別
+}
+
+const appConfig: Config = {
+  name: "MyApp",
+  version: 1,
+  apiUrl: "https://api.example.com",
+  timeout: 5000
+};
+```
+
+## Interface 繼承（extends）
+
+Interface 可以透過 `extends` 關鍵字繼承其他 interface：
+
+```ts
+// 基礎 interface
+interface Animal {
+  name: string;
+  age: number;
+}
+
+// 單一繼承
+interface Dog extends Animal {
+  breed: string;
+  bark(): void;
+}
+
+const myDog: Dog = {
+  name: "Buddy",
+  age: 3,
+  breed: "Golden Retriever",
+  bark() {
+    console.log("Woof!");
+  }
+};
+
+// 多重繼承
+interface HasId {
+  id: number;
+}
+
+interface HasTimestamp {
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface BlogPost extends HasId, HasTimestamp {
+  title: string;
+  content: string;
+  author: string;
+}
+
+const post: BlogPost = {
+  id: 1,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  title: "TypeScript 入門",
+  content: "...",
+  author: "Alice"
+};
+```
+
+## Type Alias 定義
+
+`type` 關鍵字可以為任何型別建立別名，不限於物件型別：
+
+```ts
+// 為原始型別建立別名
+type ID = string | number;
+type Email = string;
+
+// 物件型別
+type Point = {
+  x: number;
+  y: number;
+};
+
+// 函式型別
+type Formatter = (input: string) => string;
+
+// 元組型別
+type Coordinate = [number, number];
+
+// 字面量型別的聯合
+type Status = "pending" | "active" | "inactive";
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+// 使用
+const userId: ID = 12345;
+const point: Point = { x: 10, y: 20 };
+const status: Status = "active";
+
+const format: Formatter = (input) => input.toUpperCase();
+```
+
+### Type Alias 的交叉組合
+
+Type Alias 使用 `&`（交叉型別）來組合多個型別，類似 interface 的繼承：
+
+```ts
+type HasId = {
+  id: number;
+};
+
+type HasName = {
+  name: string;
+};
+
+type HasEmail = {
+  email: string;
+};
+
+// 交叉型別組合
+type User = HasId & HasName & HasEmail;
+
+const user: User = {
+  id: 1,
+  name: "Alice",
+  email: "alice@example.com"
+};
+
+// 也可以在交叉時加入新屬性
+type AdminUser = User & {
+  role: "admin";
+  permissions: string[];
+};
+```
+
+## Type vs Interface 差異比較
+
+以下是 `type` 與 `interface` 的關鍵差異：
+
+```ts
+// 1. Declaration Merging — 只有 interface 支援
+interface User {
+  name: string;
+}
+interface User {
+  age: number;
+}
+// 合併後 User 同時擁有 name 和 age
+
+// type 不允許重複宣告
+// type Point = { x: number };
+// type Point = { y: number }; // ❌ 編譯錯誤：重複識別符
+
+// 2. 原始型別別名 — 只有 type 支援
+type ID = string;
+type Nullable<T> = T | null;
+// interface 不能為原始型別建立別名
+
+// 3. 聯合型別 — 只有 type 支援
+type Result = "success" | "error";
+type StringOrNumber = string | number;
+// interface 不能定義聯合型別
+
+// 4. 元組型別 — 只有 type 支援（語法較直覺）
+type Pair = [string, number];
+
+// 5. Mapped Types — 只有 type 支援
+type Readonly<T> = {
+  readonly [P in keyof T]: T[P];
+};
+
+// 6. extends vs & — 語法不同但效果類似
+interface Animal {
+  name: string;
+}
+interface Dog extends Animal {
+  breed: string;
+}
+
+type AnimalType = {
+  name: string;
+};
+type DogType = AnimalType & {
+  breed: string;
+};
+
+// 7. 實作（implements）— 兩者都支援
+// class MyClass implements User { ... }
+// class MyClass implements UserType { ... }
+```
+
+| 功能 | `interface` | `type` |
+|------|-------------|--------|
+| 物件型別定義 | 支援 | 支援 |
+| extends 繼承 | 支援 | 使用 `&` 實現 |
+| implements | 支援 | 支援 |
+| Declaration Merging | 支援 | 不支援 |
+| 聯合型別 | 不支援 | 支援 |
+| 原始型別別名 | 不支援 | 支援 |
+| 元組 | 不支援 | 支援 |
+| Mapped Types | 不支援 | 支援 |
+
+## Declaration Merging 詳解
+
+Declaration Merging（宣告合併）是 interface 獨有的特性，允許在不同位置定義同名 interface，TypeScript 會自動將它們合併：
+
+```ts
+// 第一個宣告
+interface Window {
+  title: string;
+}
+
+// 第二個宣告（自動合併）
+interface Window {
+  customProperty: string;
+}
+
+// 合併後的 Window 同時擁有 title 和 customProperty
+const win: Window = {
+  title: "My App",
+  customProperty: "value"
+};
+```
+
+Declaration Merging 最常見的用途是**擴展第三方函式庫的型別定義**：
+
+```ts
+// 擴展 Express 的 Request 型別
+declare namespace Express {
+  interface Request {
+    userId?: string;
+    sessionData?: Record<string, unknown>;
+  }
+}
+
+// 擴展全域 Window 型別
+interface Window {
+  analytics: {
+    track(event: string, data?: Record<string, unknown>): void;
+  };
+}
+```
+
+<Callout type="tip" title="Declaration Merging 的實用場景">
+當你使用第三方函式庫（如 Express、Next.js）並需要擴展它們的型別時，Declaration Merging 非常有用。透過宣告同名 interface，你可以在不修改原始型別定義的情況下新增自訂屬性。
+</Callout>
+
+## 何時用 Interface，何時用 Type？
+
+以下是實務中的建議準則：
+
+**優先使用 `interface` 的場景：**
+- 定義物件的公開 API 結構
+- 需要被 class 實作（implements）的契約
+- 需要利用 Declaration Merging 擴展型別
+- 定義 React 元件的 Props
+
+**優先使用 `type` 的場景：**
+- 聯合型別（union type）
+- 元組型別
+- 映射型別（mapped type）
+- 需要為原始型別建立別名
+- 複雜的型別運算
+
+```ts
+// 物件結構 → interface
+interface UserProps {
+  name: string;
+  onLogin: () => void;
+}
+
+// 聯合型別 → type
+type Theme = "light" | "dark" | "system";
+
+// 函式型別 → type（語法更清晰）
+type EventHandler = (event: Event) => void;
+
+// 泛型工具型別 → type
+type Nullable<T> = T | null;
+type Optional<T> = T | undefined;
+```
+
+## Record 型別簡介
+
+`Record<K, V>` 是 TypeScript 內建的工具型別，用來建立鍵為 `K` 型別、值為 `V` 型別的物件：
+
+```ts
+// Record<string, number> 等同於 { [key: string]: number }
+const scores: Record<string, number> = {
+  math: 95,
+  english: 88,
+  science: 92
+};
+
+// 搭配聯合型別限制鍵的範圍
+type Department = "engineering" | "design" | "marketing";
+
+const headcount: Record<Department, number> = {
+  engineering: 50,
+  design: 20,
+  marketing: 15
+};
+
+// 搭配複雜的值型別
+interface Employee {
+  name: string;
+  salary: number;
+}
+
+const managers: Record<Department, Employee> = {
+  engineering: { name: "Alice", salary: 150000 },
+  design: { name: "Bob", salary: 130000 },
+  marketing: { name: "Charlie", salary: 120000 }
+};
+
+// Record 的型別定義
+// type Record<K extends keyof any, T> = {
+//   [P in K]: T;
+// };
+```
+
+<CodePlayground
+  title="物件結構驗證的 JavaScript 模擬"
+  defaultJS={`// 模擬 TypeScript interface 的 runtime 驗證概念
+// （TypeScript 的型別檢查在編譯期，以下是 runtime 模擬）
+
+function validateUser(obj) {
+  const requiredFields = {
+    name: "string",
+    age: "number",
+    email: "string"
+  };
+  const optionalFields = {
+    bio: "string"
+  };
+
+  const errors = [];
+
+  // 檢查必要屬性
+  for (const [field, type] of Object.entries(requiredFields)) {
+    if (!(field in obj)) {
+      errors.push("缺少必要屬性: " + field);
+    } else if (typeof obj[field] !== type) {
+      errors.push(field + " 應為 " + type + "，但得到 " + typeof obj[field]);
+    }
+  }
+
+  // 檢查可選屬性的型別
+  for (const [field, type] of Object.entries(optionalFields)) {
+    if (field in obj && typeof obj[field] !== type) {
+      errors.push(field + " 應為 " + type + "，但得到 " + typeof obj[field]);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// 測試有效的物件
+const validUser = { name: "Alice", age: 30, email: "alice@example.com" };
+console.log("驗證有效使用者:", JSON.stringify(validateUser(validUser)));
+
+// 測試缺少屬性
+const incomplete = { name: "Bob" };
+console.log("驗證不完整物件:", JSON.stringify(validateUser(incomplete)));
+
+// 測試型別錯誤
+const wrongType = { name: "Charlie", age: "thirty", email: 123 };
+console.log("驗證型別錯誤:", JSON.stringify(validateUser(wrongType)));
+
+// 模擬 Record<string, number>
+console.log("\\n--- Record 型別模擬 ---");
+const scores = { math: 95, english: 88, science: 92 };
+const isValidRecord = Object.values(scores).every(v => typeof v === "number");
+console.log("所有值皆為 number:", isValidRecord);
+console.log("Record 內容:", JSON.stringify(scores));
+
+// 模擬 interface 繼承
+console.log("\\n--- Interface 繼承模擬 ---");
+const animal = { name: "Buddy", age: 3 };
+const dog = { ...animal, breed: "Golden Retriever" };
+console.log("Animal:", JSON.stringify(animal));
+console.log("Dog (extends Animal):", JSON.stringify(dog));
+`}
+/>
+
+## 面試重點整理
+
+1. **interface vs type 的核心差異**：interface 支援 Declaration Merging，type 支援聯合型別、元組、mapped types。定義物件結構優先用 interface，定義聯合或複合型別用 type。
+
+2. **Declaration Merging**：同名 interface 會自動合併，這在擴展第三方函式庫的型別定義時非常有用。type 不支援此特性。
+
+3. **readonly 的限制**：`readonly` 只在編譯期生效，不影響 runtime 行為。要做到 runtime 不可變需要使用 `Object.freeze()` 等機制。
+
+4. **索引簽名**：使用 `[key: string]: ValueType` 定義動態屬性，注意固定屬性的型別必須是索引簽名值型別的子型別。
+
+5. **Record 型別**：`Record<K, V>` 是建立鍵值對映物件的便捷工具型別，可搭配聯合型別限制鍵的範圍。
+
+6. **extends vs &**：interface 用 `extends` 繼承，type 用 `&` 交叉組合，效果類似但在型別衝突時行為不同。`extends` 會在衝突時報錯，`&` 會產生 `never` 型別。
+
+7. **可選屬性**：`?` 修飾符使屬性變為可選，其型別會自動包含 `undefined`。在嚴格模式下使用前需做存在性檢查。
+
+---
+
+下一篇我們將學習 **聯合型別與交叉型別**，深入理解 TypeScript 型別組合的強大能力以及型別收窄的核心技巧。

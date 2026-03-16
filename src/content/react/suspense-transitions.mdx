@@ -1,0 +1,629 @@
+# Suspense 與 Transitions
+
+React 18 引入了並行渲染（Concurrent Rendering）機制，徹底改變了 React 處理更新的方式。Suspense 和 Transitions 是這個新模型的兩大核心，讓你能夠區分「緊急」和「非緊急」的 UI 更新，建構出更流暢的使用者體驗。
+
+## 並行渲染概念
+
+在傳統的同步渲染中，一旦 React 開始渲染，就必須完成整個渲染過程，無法中斷。這代表如果渲染耗時較長，主執行緒會被阻塞，使用者的輸入無法被即時回應。
+
+並行渲染解決了這個問題：
+
+```
+同步渲染：
+[==========渲染完整列表==========] → 畫面更新
+（期間使用者輸入被阻塞）
+
+並行渲染：
+[===渲染一部分===] → 使用者輸入! → [暫停] → 處理輸入 → [===繼續渲染===] → 畫面更新
+（使用者輸入被優先處理）
+```
+
+### 並行渲染的關鍵特性
+
+- **可中斷**：渲染工作可以被更高優先級的更新打斷
+- **優先級**：React 可以區分哪些更新是緊急的（如使用者輸入），哪些可以延遲（如搜尋結果更新）
+- **選擇性啟用**：並行特性是漸進式的，只有使用特定 API 時才會觸發
+
+<Callout type="info" title="並行模式 vs 並行特性">
+React 18 最終不是以「並行模式」的全開方式推出，而是以「並行特性」（Concurrent Features）的方式提供。這代表你可以在需要的地方逐步採用 `useTransition`、`useDeferredValue` 等 API，而不需要一次性遷移整個應用。只要使用 `createRoot` 取代 `ReactDOM.render`，就能使用所有並行特性。
+</Callout>
+
+## Suspense 基礎
+
+`Suspense` 讓你宣告式地處理非同步載入的等待狀態。當子元件尚未準備好時，顯示 `fallback` 內容：
+
+```jsx
+import { Suspense, lazy } from 'react';
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+function App() {
+  return (
+    <Suspense fallback={<div>載入中...</div>}>
+      <HeavyComponent />
+    </Suspense>
+  );
+}
+```
+
+### fallback 的層級設計
+
+Suspense 邊界可以巢狀，讓你精細控制不同區域的 loading 狀態：
+
+```jsx
+function Dashboard() {
+  return (
+    <div className="dashboard">
+      {/* 外層 Suspense：整個頁面的 fallback */}
+      <Suspense fallback={<PageSkeleton />}>
+        <Header />
+
+        <div className="content">
+          {/* 側邊欄有自己的 loading 狀態 */}
+          <Suspense fallback={<SidebarSkeleton />}>
+            <Sidebar />
+          </Suspense>
+
+          <main>
+            {/* 主內容有自己的 loading 狀態 */}
+            <Suspense fallback={<ContentSkeleton />}>
+              <MainContent />
+
+              {/* 評論區獨立載入 */}
+              <Suspense fallback={<CommentsSkeleton />}>
+                <Comments />
+              </Suspense>
+            </Suspense>
+          </main>
+        </div>
+      </Suspense>
+    </div>
+  );
+}
+```
+
+最近的 Suspense 邊界會捕獲其下方的 suspend 事件。如果 `Comments` 還在載入，只有 `<CommentsSkeleton />` 會顯示，其他已經準備好的部分（Header、Sidebar、MainContent）不會受影響。
+
+### Suspense 的運作原理
+
+Suspense 透過捕獲子元件「丟出」的 Promise 來運作：
+
+```jsx
+// 簡化的概念說明（非實際實作）
+// 1. 子元件在資料還沒準備好時，丟出一個 Promise
+// 2. Suspense 捕獲這個 Promise，顯示 fallback
+// 3. Promise resolve 後，Suspense 重新渲染子元件
+
+// 支援 Suspense 的資料獲取函式（概念）
+function fetchData(url) {
+  let status = 'pending';
+  let result;
+  const promise = fetch(url)
+    .then(r => r.json())
+    .then(data => { status = 'success'; result = data; })
+    .catch(err => { status = 'error'; result = err; });
+
+  return {
+    read() {
+      if (status === 'pending') throw promise;  // 丟給 Suspense
+      if (status === 'error') throw result;      // 丟給 ErrorBoundary
+      return result;                              // 回傳資料
+    }
+  };
+}
+```
+
+## useTransition
+
+`useTransition` 讓你將某些 state 更新標記為「非緊急」（transition），React 會在處理完緊急更新後才處理它們：
+
+```jsx
+import { useState, useTransition } from 'react';
+
+function SearchPage() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [isPending, startTransition] = useTransition();
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+
+    // 緊急更新：立即更新輸入框
+    setQuery(value);
+
+    // 非緊急更新：搜尋結果可以稍後再更新
+    startTransition(() => {
+      const filtered = heavyFilter(allData, value);
+      setResults(filtered);
+    });
+  };
+
+  return (
+    <div>
+      <input value={query} onChange={handleChange} placeholder="搜尋..." />
+      {isPending && <span>搜尋中...</span>}
+      <SearchResults results={results} />
+    </div>
+  );
+}
+```
+
+### useTransition 的行為
+
+- `startTransition` 中的 state 更新會被標記為低優先級
+- 如果有新的緊急更新進來，React 會中斷 transition 渲染，先處理緊急更新
+- `isPending` 為 `true` 時表示 transition 正在進行中，可以用來顯示 loading 指示
+- Transition 更新不會顯示 Suspense fallback（會保留舊內容）
+
+```jsx
+function TabContainer() {
+  const [tab, setTab] = useState('home');
+  const [isPending, startTransition] = useTransition();
+
+  function selectTab(nextTab) {
+    startTransition(() => {
+      setTab(nextTab);
+    });
+  }
+
+  return (
+    <div>
+      <nav>
+        <button onClick={() => selectTab('home')}>首頁</button>
+        <button onClick={() => selectTab('posts')}>文章</button>
+        <button onClick={() => selectTab('settings')}>設定</button>
+      </nav>
+
+      <div style={{ opacity: isPending ? 0.7 : 1 }}>
+        {/* 切換 tab 時，舊內容會顯示到新內容準備好為止 */}
+        <Suspense fallback={<TabSkeleton />}>
+          {tab === 'home' && <Home />}
+          {tab === 'posts' && <Posts />}
+          {tab === 'settings' && <Settings />}
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+```
+
+## startTransition
+
+`startTransition` 是 `useTransition` 的獨立函式版本，適用於無法使用 hooks 的場景：
+
+```jsx
+import { startTransition } from 'react';
+
+// 可以在任何地方使用，不限於元件內部
+function handleNavigation(url) {
+  startTransition(() => {
+    router.navigate(url);
+  });
+}
+
+// 事件處理器中
+button.addEventListener('click', () => {
+  startTransition(() => {
+    setState(newValue);
+  });
+});
+```
+
+與 `useTransition` 的差別是 `startTransition` 不提供 `isPending` 狀態。
+
+## useDeferredValue
+
+`useDeferredValue` 讓一個值「延遲」更新，類似 debounce 但由 React 智慧控制時機：
+
+```jsx
+import { useState, useDeferredValue, memo } from 'react';
+
+// 昂貴的列表元件
+const ExpensiveList = memo(function ExpensiveList({ query }) {
+  console.log(`渲染列表，搜尋: ${query}`);
+  // 模擬大量項目過濾
+  const items = allItems.filter(item =>
+    item.name.toLowerCase().includes(query.toLowerCase())
+  );
+  return (
+    <ul>
+      {items.map(item => <li key={item.id}>{item.name}</li>)}
+    </ul>
+  );
+});
+
+function SearchPage() {
+  const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
+
+  // query 立即更新（輸入框即時回應）
+  // deferredQuery 延遲更新（列表稍後才更新）
+  const isStale = query !== deferredQuery;
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="搜尋..."
+      />
+      <div style={{ opacity: isStale ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+        <ExpensiveList query={deferredQuery} />
+      </div>
+    </div>
+  );
+}
+```
+
+### useTransition vs useDeferredValue
+
+| 特性 | useTransition | useDeferredValue |
+|------|--------------|------------------|
+| 控制對象 | state 更新 | 值本身 |
+| 使用場景 | 你能控制 state 更新的地方 | 你只能控制接收到的值 |
+| 回傳 | `[isPending, startTransition]` | 延遲後的值 |
+| 典型用途 | 按鈕點擊、表單提交 | 來自 props 的值 |
+
+```jsx
+// useTransition：你控制 setState
+function Parent() {
+  const [query, setQuery] = useState('');
+  const [isPending, startTransition] = useTransition();
+
+  const handleChange = (e) => {
+    setQuery(e.target.value); // 緊急
+    startTransition(() => {
+      setFilteredData(filter(data, e.target.value)); // 非緊急
+    });
+  };
+}
+
+// useDeferredValue：你只收到一個值
+function Child({ query }) {
+  const deferredQuery = useDeferredValue(query);
+  // deferredQuery 會在 React 閒暇時才更新
+}
+```
+
+## 互動範例：useTransition 搜尋過濾
+
+<CodePlayground
+  title="useTransition 搜尋過濾範例"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 20px; background: #f0f4f8; }
+.app { max-width: 600px; margin: 0 auto; }
+h2 { color: #333; margin-top: 0; }
+.search-box { width: 100%; padding: 10px 14px; font-size: 16px; border: 2px solid #ddd; border-radius: 6px; box-sizing: border-box; margin-bottom: 12px; }
+.search-box:focus { outline: none; border-color: #4a90d9; }
+.status { font-size: 13px; color: #888; margin-bottom: 8px; }
+.status .pending { color: #e67e22; font-weight: bold; }
+.list-container { background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 350px; overflow-y: auto; }
+.list-item { padding: 10px 16px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+.list-item:last-child { border-bottom: none; }
+.highlight { background-color: #fff3cd; padding: 1px 2px; border-radius: 2px; }
+.mode-toggle { margin-bottom: 16px; }
+.mode-btn { padding: 6px 14px; margin-right: 8px; border: 2px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.mode-btn.active { border-color: #4a90d9; background: #e8f0fe; color: #4a90d9; font-weight: bold; }
+.stale { opacity: 0.5; transition: opacity 0.15s; }
+.info-box { background: #e8f4fd; border-left: 4px solid #4a90d9; padding: 10px 14px; margin-bottom: 16px; border-radius: 0 4px 4px 0; font-size: 13px; color: #333; }`}
+  defaultJS={`const { useState, useTransition, useDeferredValue, useMemo, memo } = React;
+
+// 產生測試資料
+var categories = ['JavaScript', 'TypeScript', 'React', 'Vue', 'Angular', 'Node.js', 'CSS', 'HTML', 'Python', 'Go'];
+var allItems = [];
+for (var i = 0; i < 5000; i++) {
+  allItems.push({
+    id: i,
+    name: categories[i % categories.length] + ' 技術文章 #' + (i + 1),
+    category: categories[i % categories.length]
+  });
+}
+
+// 模擬昂貴的過濾（刻意放慢）
+function slowFilter(items, query) {
+  if (!query) return items.slice(0, 100);
+  var result = [];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].name.toLowerCase().indexOf(query.toLowerCase()) !== -1) {
+      result.push(items[i]);
+      // 刻意放慢處理
+      var x = 0;
+      for (var j = 0; j < 500; j++) { x += Math.random(); }
+    }
+    if (result.length >= 100) break;
+  }
+  return result;
+}
+
+var ListItem = memo(function ListItem(props) {
+  return React.createElement('div', { className: 'list-item' }, props.item.name);
+});
+
+function App() {
+  var qs = useState('');
+  var query = qs[0]; var setQuery = qs[1];
+  var ms = useState('transition');
+  var mode = ms[0]; var setMode = ms[1];
+  var tr = useTransition();
+  var isPending = tr[0]; var startTransition = tr[1];
+  var rs = useState(allItems.slice(0, 100));
+  var results = rs[0]; var setResults = rs[1];
+
+  // useDeferredValue 模式
+  var deferredQuery = useDeferredValue(mode === 'deferred' ? query : '');
+  var deferredResults = useMemo(function() {
+    if (mode !== 'deferred') return [];
+    return slowFilter(allItems, deferredQuery);
+  }, [deferredQuery, mode]);
+  var isStale = mode === 'deferred' && query !== deferredQuery;
+
+  function handleChange(e) {
+    var value = e.target.value;
+    setQuery(value);
+
+    if (mode === 'transition') {
+      startTransition(function() {
+        setResults(slowFilter(allItems, value));
+      });
+    } else if (mode === 'blocking') {
+      setResults(slowFilter(allItems, value));
+    }
+  }
+
+  var displayResults = mode === 'deferred' ? deferredResults : results;
+  var showPending = (mode === 'transition' && isPending) || isStale;
+
+  return React.createElement('div', { className: 'app' },
+    React.createElement('h2', null, '搜尋過濾效能比較'),
+    React.createElement('div', { className: 'info-box' },
+      '在 5,000 筆資料中搜尋（刻意放慢）。切換模式感受輸入回應差異。'
+    ),
+    React.createElement('div', { className: 'mode-toggle' },
+      React.createElement('button', {
+        className: 'mode-btn' + (mode === 'transition' ? ' active' : ''),
+        onClick: function() { setMode('transition'); setResults(allItems.slice(0, 100)); setQuery(''); }
+      }, 'useTransition'),
+      React.createElement('button', {
+        className: 'mode-btn' + (mode === 'deferred' ? ' active' : ''),
+        onClick: function() { setMode('deferred'); setQuery(''); }
+      }, 'useDeferredValue'),
+      React.createElement('button', {
+        className: 'mode-btn' + (mode === 'blocking' ? ' active' : ''),
+        onClick: function() { setMode('blocking'); setResults(allItems.slice(0, 100)); setQuery(''); }
+      }, '同步（阻塞）')
+    ),
+    React.createElement('input', {
+      className: 'search-box',
+      value: query,
+      onChange: handleChange,
+      placeholder: '試試輸入 react、vue、css...'
+    }),
+    React.createElement('div', { className: 'status' },
+      showPending
+        ? React.createElement('span', { className: 'pending' }, '過濾中...')
+        : React.createElement('span', null, '顯示 ' + displayResults.length + ' 筆結果（模式: ' + mode + '）')
+    ),
+    React.createElement('div', {
+      className: 'list-container' + (showPending ? ' stale' : '')
+    },
+      displayResults.map(function(item) {
+        return React.createElement(ListItem, { key: item.id, item: item });
+      })
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));`}
+  dependencies={["react"]}
+/>
+
+## Suspense 與資料獲取
+
+Suspense 最初用於 `React.lazy`，但它真正的願景是成為所有非同步操作的統一等待機制。
+
+### 與資料獲取框架整合
+
+目前支援 Suspense 的資料獲取方案：
+
+```jsx
+// React Query (TanStack Query) 支援 Suspense
+import { useSuspenseQuery } from '@tanstack/react-query';
+
+function UserProfile({ userId }) {
+  // 資料還沒準備好時，元件會 suspend
+  // Suspense 邊界會捕獲並顯示 fallback
+  const { data: user } = useSuspenseQuery({
+    queryKey: ['user', userId],
+    queryFn: () => fetchUser(userId)
+  });
+
+  // 到這裡時，user 一定已經載入完成
+  return <div>{user.name}</div>;
+}
+
+// 使用時包在 Suspense 中
+function App() {
+  return (
+    <Suspense fallback={<ProfileSkeleton />}>
+      <UserProfile userId={1} />
+    </Suspense>
+  );
+}
+```
+
+### Next.js 的 Suspense 整合
+
+```jsx
+// Next.js App Router 原生支援 Suspense
+// app/page.js
+import { Suspense } from 'react';
+
+async function UserData() {
+  const user = await fetch('/api/user').then(r => r.json());
+  return <div>{user.name}</div>;
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<p>載入使用者資料...</p>}>
+      <UserData />
+    </Suspense>
+  );
+}
+```
+
+### React 19 的 use Hook
+
+React 19 引入的 `use` hook 讓 Suspense 與資料獲取更加自然：
+
+```jsx
+import { use, Suspense } from 'react';
+
+function UserProfile({ userPromise }) {
+  // use() 可以直接接收 Promise
+  // 如果 Promise 尚未 resolve，元件會 suspend
+  const user = use(userPromise);
+
+  return (
+    <div>
+      <h2>{user.name}</h2>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+
+function App() {
+  // 在渲染之前就開始載入資料
+  const userPromise = fetchUser(1);
+
+  return (
+    <Suspense fallback={<Loading />}>
+      <UserProfile userPromise={userPromise} />
+    </Suspense>
+  );
+}
+```
+
+<Callout type="warning" title="不要在元件內建立 Promise">
+傳給 `use()` 的 Promise 不應該在每次渲染時建立新的。應該在元件外部或事件處理器中建立，或使用支援快取的框架（如 React Query）。否則每次渲染都會觸發新的資料載入。
+</Callout>
+
+## Streaming SSR 概述
+
+React 18 的 Streaming SSR 讓伺服器能夠分段傳送 HTML，而不是等整個頁面渲染完才回應：
+
+### 傳統 SSR vs Streaming SSR
+
+```
+傳統 SSR：
+伺服器：[===取得所有資料===][===渲染所有 HTML===] → 送出完整 HTML
+客戶端：                                            [===下載===][===hydrate 所有===]
+（使用者看到空白直到所有都完成）
+
+Streaming SSR：
+伺服器：[=Header HTML=] → 送出 → [=Content HTML=] → 送出 → [=Comments HTML=] → 送出
+客戶端：[=顯示 Header=]        → [=顯示 Content=]        → [=顯示 Comments=]
+（使用者逐步看到內容）
+```
+
+### 搭配 Suspense 使用
+
+```jsx
+// 伺服器端
+import { renderToPipeableStream } from 'react-dom/server';
+
+function App() {
+  return (
+    <html>
+      <body>
+        <Header /> {/* 立即送出 */}
+
+        <Suspense fallback={<ContentSkeleton />}>
+          <MainContent /> {/* 資料就緒後送出 */}
+        </Suspense>
+
+        <Suspense fallback={<CommentsSkeleton />}>
+          <Comments /> {/* 資料就緒後送出 */}
+        </Suspense>
+      </body>
+    </html>
+  );
+}
+
+// 使用 renderToPipeableStream
+const { pipe } = renderToPipeableStream(<App />, {
+  bootstrapScripts: ['/main.js'],
+  onShellReady() {
+    response.statusCode = 200;
+    response.setHeader('Content-Type', 'text/html');
+    pipe(response); // 開始串流
+  }
+});
+```
+
+### 選擇性 Hydration
+
+Streaming SSR 還支援選擇性 Hydration（Selective Hydration）：
+
+- 不需要等所有 JavaScript 下載完才開始 hydrate
+- 使用者與尚未 hydrate 的部分互動時，React 會優先 hydrate 該部分
+- 不同的 Suspense 邊界可以獨立 hydrate
+
+```
+傳統 Hydration：下載所有 JS → hydrate 整個頁面
+選擇性 Hydration：
+  Header JS 下載 → hydrate Header（使用者已可操作 Header）
+  Content JS 下載 → hydrate Content
+  Comments JS 下載 → hydrate Comments
+  （使用者點擊 Comments → 優先 hydrate Comments）
+```
+
+## React 18+ 並行特性整理
+
+| API | 用途 | 版本 |
+|-----|------|------|
+| `createRoot` | 啟用並行特性的入口 | React 18 |
+| `useTransition` | 標記低優先級 state 更新 | React 18 |
+| `useDeferredValue` | 延遲值的更新 | React 18 |
+| `startTransition` | 非 hook 版本的 transition | React 18 |
+| `Suspense`（SSR） | 伺服器端串流渲染 | React 18 |
+| `use` | 在渲染中讀取 Promise / Context | React 19 |
+| `useActionState` | 表單動作狀態管理 | React 19 |
+| `useOptimistic` | 樂觀更新 | React 19 |
+
+### 使用時機總覽
+
+```jsx
+// 1. useTransition：你控制 state 更新，且想標記為非緊急
+const [isPending, startTransition] = useTransition();
+startTransition(() => setFilteredData(heavyComputation()));
+
+// 2. useDeferredValue：你收到一個值，想延遲它的效果
+const deferredQuery = useDeferredValue(query);
+
+// 3. Suspense + lazy：程式碼分割
+const Page = lazy(() => import('./Page'));
+<Suspense fallback={<Loading />}><Page /></Suspense>
+
+// 4. Suspense + 資料獲取：等待非同步資料
+<Suspense fallback={<Skeleton />}>
+  <DataComponent /> {/* 使用支援 Suspense 的資料框架 */}
+</Suspense>
+```
+
+<Callout type="tip" title="漸進式採用策略">
+不需要一次導入所有並行特性。建議的順序是：(1) 先升級到 `createRoot`；(2) 在搜尋、篩選等場景使用 `useTransition` 或 `useDeferredValue`；(3) 用 `Suspense` + `lazy` 做程式碼分割；(4) 如果使用支援的框架（Next.js、Remix），啟用 Streaming SSR。
+</Callout>
+
+## 面試重點整理
+
+1. **並行渲染**：React 18 的核心改進。渲染工作可被中斷，讓緊急更新（使用者輸入）優先處理。透過 `createRoot` 啟用
+2. **Suspense**：宣告式地處理非同步載入的等待狀態。透過 fallback 顯示 loading UI，支援巢狀邊界
+3. **useTransition**：將 state 更新標記為非緊急。回傳 `[isPending, startTransition]`，transition 中的更新不會阻塞使用者輸入
+4. **useDeferredValue**：讓一個值延遲更新。適用於無法控制 state 更新來源的場景。搭配 `memo` 使用效果最佳
+5. **useTransition vs useDeferredValue**：前者控制「更新的觸發」，後者控制「值的消費」。效果類似但適用場景不同
+6. **Streaming SSR**：伺服器分段傳送 HTML，搭配 Suspense 邊界實現。支援選擇性 Hydration，使用者可以更早與頁面互動
+7. **React 19 的 use hook**：可以在渲染中直接讀取 Promise，讓 Suspense 與資料獲取更加自然
+
+本篇涵蓋了 React 18/19 最重要的並行特性。掌握這些概念，能讓你在建構大型應用時做出更好的架構決策，提供更流暢的使用者體驗。

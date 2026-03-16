@@ -1,0 +1,611 @@
+# 函式型別
+
+函式是 JavaScript 的核心構建元件，而 TypeScript 為函式提供了強大的型別支援。從基本的參數與回傳值標註，到函式重載、型別謂詞等進階特性，TypeScript 讓我們能精確描述函式的行為契約。本篇將全面介紹函式型別的各種面向。
+
+## 函式型別定義
+
+在 TypeScript 中，有多種方式定義函式的型別：
+
+```ts
+// 方式一：函式宣告中直接標註
+function add(a: number, b: number): number {
+  return a + b;
+}
+
+// 方式二：箭頭函式中標註
+const multiply = (a: number, b: number): number => a * b;
+
+// 方式三：用 type alias 定義函式型別
+type MathOperation = (a: number, b: number) => number;
+
+const subtract: MathOperation = (a, b) => a - b;
+const divide: MathOperation = (a, b) => a / b;
+
+// 方式四：用 interface 定義可呼叫型別（Call Signature）
+interface Formatter {
+  (input: string): string;
+}
+
+const toUpper: Formatter = (input) => input.toUpperCase();
+
+// 方式五：具有屬性的可呼叫型別
+interface Logger {
+  (message: string): void;
+  level: "info" | "warn" | "error";
+  history: string[];
+}
+```
+
+## 參數型別與回傳型別
+
+```ts
+// 參數型別必須標註（大多數情況下無法推論）
+function greet(name: string, greeting: string): string {
+  return `${greeting}, ${name}!`;
+}
+
+// 回傳型別可以推論，但建議在公開 API 中明確標註
+function calculateTax(price: number, rate: number): number {
+  return price * rate;
+}
+
+// 多行回傳的函式，明確標註可以防止意外
+function getUserStatus(user: { active: boolean; banned: boolean }): string {
+  if (user.banned) return "banned";
+  if (user.active) return "active";
+  return "inactive";
+}
+
+// 解構參數的型別標註
+function createUser({ name, age }: { name: string; age: number }): void {
+  console.log(`建立使用者: ${name}, ${age} 歲`);
+}
+
+// 搭配 type alias 讓解構參數更清晰
+type UserParams = {
+  name: string;
+  age: number;
+  email?: string;
+};
+
+function registerUser({ name, age, email }: UserParams): void {
+  console.log(`註冊: ${name}`);
+}
+```
+
+<Callout type="info" title="何時該明確標註回傳型別？">
+雖然 TypeScript 可以推論函式回傳型別，但在以下情況建議明確標註：公開的 API 函式、回傳值型別複雜或含有聯合型別的函式、遞迴函式、以及函式有多個回傳路徑時。明確的回傳型別可以防止不小心回傳錯誤的型別。
+</Callout>
+
+## 可選參數與預設值
+
+```ts
+// 可選參數（使用 ?）
+function buildUrl(base: string, path?: string, query?: string): string {
+  let url = base;
+  if (path) url += `/${path}`;
+  if (query) url += `?${query}`;
+  return url;
+}
+
+buildUrl("https://api.com");                    // OK
+buildUrl("https://api.com", "users");           // OK
+buildUrl("https://api.com", "users", "page=1"); // OK
+
+// 可選參數必須在必要參數之後
+// function bad(a?: string, b: number) {} // ❌ 編譯錯誤
+
+// 預設值參數
+function createConfig(
+  host: string = "localhost",
+  port: number = 3000,
+  secure: boolean = false
+): string {
+  const protocol = secure ? "https" : "http";
+  return `${protocol}://${host}:${port}`;
+}
+
+createConfig();                    // "http://localhost:3000"
+createConfig("example.com");       // "http://example.com:3000"
+createConfig("example.com", 443, true); // "https://example.com:443"
+
+// 有預設值的參數可以不在最後
+function padString(
+  str: string,
+  padding: number = 4,  // 有預設值
+  char: string           // 必要參數
+): string {
+  return str.padStart(padding, char);
+}
+
+padString("hi", undefined, "*"); // "**hi"
+// 傳 undefined 會使用預設值
+```
+
+## 剩餘參數（Rest Parameters）
+
+```ts
+// 基本 rest 參數
+function sum(...numbers: number[]): number {
+  return numbers.reduce((total, n) => total + n, 0);
+}
+
+console.log(sum(1, 2, 3));       // 6
+console.log(sum(1, 2, 3, 4, 5)); // 15
+
+// rest 參數搭配其他參數
+function log(level: string, ...messages: string[]): void {
+  console.log(`[${level}]`, ...messages);
+}
+
+log("INFO", "Server started", "on port 3000");
+
+// 元組型別的 rest 參數
+function createTuple(...args: [string, number, boolean]): void {
+  const [name, age, active] = args;
+  console.log(name, age, active);
+}
+
+createTuple("Alice", 30, true);
+// createTuple("Alice", 30); // ❌ 缺少參數
+
+// 泛型 rest 參數
+function firstElement<T>(...args: [T, ...unknown[]]): T {
+  return args[0];
+}
+
+const first = firstElement(1, "hello", true); // first 的型別為 number
+```
+
+## 函式重載（Function Overloads）
+
+函式重載讓同一個函式針對不同的參數組合有不同的回傳型別：
+
+```ts
+// 重載簽名（Overload Signatures）
+function createElement(tag: "img"): HTMLImageElement;
+function createElement(tag: "input"): HTMLInputElement;
+function createElement(tag: "div"): HTMLDivElement;
+function createElement(tag: string): HTMLElement;
+
+// 實作簽名（Implementation Signature）
+function createElement(tag: string): HTMLElement {
+  return document.createElement(tag);
+}
+
+const img = createElement("img");     // HTMLImageElement
+const input = createElement("input"); // HTMLInputElement
+const div = createElement("div");     // HTMLDivElement
+const span = createElement("span");   // HTMLElement
+
+// 另一個常見範例：根據參數數量改變行為
+function parseDate(timestamp: number): Date;
+function parseDate(dateString: string): Date;
+function parseDate(year: number, month: number, day: number): Date;
+
+function parseDate(
+  yearOrTimestampOrString: number | string,
+  month?: number,
+  day?: number
+): Date {
+  if (typeof yearOrTimestampOrString === "string") {
+    return new Date(yearOrTimestampOrString);
+  }
+  if (month !== undefined && day !== undefined) {
+    return new Date(yearOrTimestampOrString, month - 1, day);
+  }
+  return new Date(yearOrTimestampOrString);
+}
+
+const d1 = parseDate(1700000000000);     // 從時間戳
+const d2 = parseDate("2025-01-15");      // 從字串
+const d3 = parseDate(2025, 1, 15);       // 從年月日
+```
+
+### 何時使用重載 vs 聯合型別
+
+```ts
+// 情況一：回傳型別依賴輸入型別 → 使用重載
+function process(input: string): string;
+function process(input: number): number;
+function process(input: string | number): string | number {
+  if (typeof input === "string") return input.toUpperCase();
+  return input * 2;
+}
+
+const str = process("hello"); // string（不是 string | number）
+const num = process(42);      // number（不是 string | number）
+
+// 情況二：回傳型別不依賴輸入型別 → 使用聯合型別
+// 不需要重載，聯合型別更簡潔
+function format(value: string | number): string {
+  return String(value);
+}
+```
+
+<Callout type="tip" title="函式重載的注意事項">
+實作簽名對外部不可見，呼叫者只能看到重載簽名。實作簽名的參數型別必須相容於所有重載簽名。在許多情況下，使用泛型或條件型別可以替代重載，寫出更簡潔的程式碼。
+</Callout>
+
+## 回呼函式型別
+
+```ts
+// 定義回呼函式型別
+type Callback = (error: Error | null, result: string) => void;
+type EventHandler = (event: { type: string; target: unknown }) => void;
+
+// 使用回呼
+function fetchData(url: string, callback: Callback): void {
+  // 模擬非同步操作
+  setTimeout(() => {
+    callback(null, "data from " + url);
+  }, 1000);
+}
+
+fetchData("https://api.com", (err, result) => {
+  if (err) {
+    console.error(err);
+    return;
+  }
+  console.log(result);
+});
+
+// 陣列方法中的回呼型別
+const numbers = [1, 2, 3, 4, 5];
+
+// TypeScript 自動推論回呼參數型別
+const doubled = numbers.map((n) => n * 2);
+// n 被推論為 number
+
+const filtered = numbers.filter((n) => n > 3);
+// n 被推論為 number
+
+// 自訂高階函式
+function retry<T>(
+  fn: () => Promise<T>,
+  times: number,
+  onError?: (error: Error, attempt: number) => void
+): Promise<T> {
+  return fn().catch((error) => {
+    if (times <= 1) throw error;
+    onError?.(error, times);
+    return retry(fn, times - 1, onError);
+  });
+}
+```
+
+## void vs undefined 回傳
+
+`void` 和 `undefined` 在函式回傳值中有重要差異：
+
+```ts
+// void：表示函式不應該有回傳值
+function logMessage(msg: string): void {
+  console.log(msg);
+  // return; // OK
+  // return undefined; // OK
+  // return "hello"; // ❌ 不能回傳值
+}
+
+// undefined：明確要求回傳 undefined
+function getUndefined(): undefined {
+  return undefined; // 必須明確 return undefined
+  // return; // ❌ 在 strictNullChecks 下可能報錯
+}
+
+// 重要差異：void 回傳型別在回呼中的特殊行為
+type VoidCallback = () => void;
+
+// void 回呼允許回傳任何值（但回傳值會被忽略）
+const cb: VoidCallback = () => {
+  return 42; // 不報錯！void 回呼的回傳值被忽略
+};
+
+// 這就是為什麼 Array.forEach 的回呼可以回傳值
+[1, 2, 3].forEach((n) => {
+  return n * 2; // 回傳值被忽略，forEach 不在乎
+});
+
+// 但如果函式宣告的回傳型別是 void，就不能回傳值
+function noReturn(): void {
+  // return 42; // ❌ 函式宣告中 void 不允許回傳值
+}
+```
+
+<Callout type="warning" title="void 在回呼與函式宣告中的行為不同">
+當 `void` 出現在回呼型別（如 `() => void`）中，回傳值只是被忽略，不會報錯。但在函式宣告（`function fn(): void`）中，回傳非 undefined 的值會產生編譯錯誤。這個設計是為了讓 `Array.forEach` 等方法的回呼能正常運作。
+</Callout>
+
+## this 參數型別
+
+TypeScript 允許你為函式指定 `this` 的型別，這在事件處理和物件方法中特別有用：
+
+```ts
+// this 參數必須是第一個參數，編譯後會被移除
+interface Button {
+  label: string;
+  onClick(this: Button): void;
+}
+
+const button: Button = {
+  label: "Submit",
+  onClick() {
+    // this 的型別為 Button
+    console.log(`點擊了 ${this.label} 按鈕`);
+  }
+};
+
+// 正確呼叫
+button.onClick(); // OK
+
+// 錯誤呼叫
+// const handler = button.onClick;
+// handler(); // ❌ this 的型別不符
+
+// 在 class 中使用 this 型別
+class Calculator {
+  private value = 0;
+
+  add(n: number): this {
+    this.value += n;
+    return this; // 回傳 this 支援鏈式呼叫
+  }
+
+  subtract(n: number): this {
+    this.value -= n;
+    return this;
+  }
+
+  getResult(): number {
+    return this.value;
+  }
+}
+
+const result = new Calculator()
+  .add(10)
+  .subtract(3)
+  .add(5)
+  .getResult(); // 12
+
+// noImplicitThis 選項
+// 開啟後，TypeScript 會在 this 型別不明確時報錯
+```
+
+## 泛型函式預覽
+
+泛型讓函式可以處理多種型別，同時保持型別安全：
+
+```ts
+// 基本泛型函式
+function identity<T>(value: T): T {
+  return value;
+}
+
+const str = identity("hello");   // 推論 T 為 string
+const num = identity(42);        // 推論 T 為 number
+const explicit = identity<boolean>(true); // 明確指定 T
+
+// 泛型約束（extends）
+function getLength<T extends { length: number }>(item: T): number {
+  return item.length;
+}
+
+getLength("hello");      // OK，string 有 length
+getLength([1, 2, 3]);    // OK，array 有 length
+// getLength(42);         // ❌ number 沒有 length
+
+// 多個型別參數
+function map<T, U>(array: T[], fn: (item: T) => U): U[] {
+  return array.map(fn);
+}
+
+const lengths = map(["hello", "world"], (s) => s.length);
+// lengths 的型別為 number[]
+
+// keyof 約束
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+
+const person = { name: "Alice", age: 30 };
+const name = getProperty(person, "name");  // string
+const age = getProperty(person, "age");    // number
+// getProperty(person, "email"); // ❌ "email" 不是 person 的 key
+```
+
+## 型別謂詞（Type Predicates）
+
+型別謂詞讓你建立自訂的型別守衛函式，幫助 TypeScript 進行型別收窄：
+
+```ts
+// 基本型別謂詞：回傳型別為 paramName is Type
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function processValue(value: unknown) {
+  if (isString(value)) {
+    // TypeScript 知道 value 是 string
+    console.log(value.toUpperCase());
+  }
+}
+
+// 實用範例：過濾 null/undefined
+function isDefined<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
+}
+
+const items: (string | null | undefined)[] = ["a", null, "b", undefined, "c"];
+const defined = items.filter(isDefined);
+// defined 的型別為 string[]（而非 (string | null | undefined)[]）
+
+// 辨識聯合的型別守衛
+interface Cat {
+  type: "cat";
+  meow(): void;
+}
+
+interface Dog {
+  type: "dog";
+  bark(): void;
+}
+
+type Pet = Cat | Dog;
+
+function isCat(pet: Pet): pet is Cat {
+  return pet.type === "cat";
+}
+
+function interact(pet: Pet) {
+  if (isCat(pet)) {
+    pet.meow(); // TypeScript 知道是 Cat
+  } else {
+    pet.bark(); // TypeScript 知道是 Dog
+  }
+}
+
+// 驗證外部資料的型別守衛
+interface User {
+  name: string;
+  age: number;
+  email: string;
+}
+
+function isUser(data: unknown): data is User {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "name" in data &&
+    "age" in data &&
+    "email" in data &&
+    typeof (data as User).name === "string" &&
+    typeof (data as User).age === "number" &&
+    typeof (data as User).email === "string"
+  );
+}
+
+function processApiData(data: unknown) {
+  if (isUser(data)) {
+    // 安全地使用 data.name、data.age、data.email
+    console.log(`使用者: ${data.name}, ${data.age} 歲`);
+  } else {
+    console.log("無效的使用者資料");
+  }
+}
+```
+
+<CodePlayground
+  title="函式重載概念的 JavaScript 範例"
+  defaultJS={`// JavaScript 中模擬 TypeScript 函式重載的概念
+// TypeScript 的重載在編譯後只剩一個函式，靠 runtime 判斷參數
+
+// 模擬 createElement 重載
+function createElement(tag) {
+  var element = { tagName: tag.toUpperCase(), type: "HTMLElement" };
+
+  // 根據不同的 tag 回傳不同「型別」的物件
+  switch (tag) {
+    case "img":
+      element.type = "HTMLImageElement";
+      element.src = "";
+      element.alt = "";
+      break;
+    case "input":
+      element.type = "HTMLInputElement";
+      element.value = "";
+      element.placeholder = "";
+      break;
+    case "a":
+      element.type = "HTMLAnchorElement";
+      element.href = "";
+      break;
+  }
+  return element;
+}
+
+console.log("createElement('img'):", JSON.stringify(createElement("img")));
+console.log("createElement('input'):", JSON.stringify(createElement("input")));
+console.log("createElement('a'):", JSON.stringify(createElement("a")));
+console.log("createElement('div'):", JSON.stringify(createElement("div")));
+
+// 模擬 parseDate 重載（根據參數型別和數量行為不同）
+console.log("\\n--- parseDate 重載模擬 ---");
+function parseDate(a, b, c) {
+  if (typeof a === "string") {
+    return new Date(a);
+  }
+  if (b !== undefined && c !== undefined) {
+    return new Date(a, b - 1, c);
+  }
+  return new Date(a);  // timestamp
+}
+
+console.log("parseDate('2025-06-15'):", parseDate("2025-06-15").toISOString().slice(0, 10));
+console.log("parseDate(2025, 6, 15):", parseDate(2025, 6, 15).toISOString().slice(0, 10));
+console.log("parseDate(0):", parseDate(0).toISOString());
+
+// 模擬型別謂詞（Type Predicate）
+console.log("\\n--- 型別謂詞模擬 ---");
+function isString(value) {
+  return typeof value === "string";
+}
+
+function isDefined(value) {
+  return value !== null && value !== undefined;
+}
+
+var mixedArray = ["hello", null, 42, undefined, "world", false];
+console.log("原始陣列:", JSON.stringify(mixedArray));
+console.log("過濾 defined:", JSON.stringify(mixedArray.filter(isDefined)));
+console.log("過濾 string:", JSON.stringify(mixedArray.filter(isString)));
+
+// 模擬 void vs undefined 回傳行為
+console.log("\\n--- void 回呼行為 ---");
+var results = [];
+[1, 2, 3].forEach(function(n) {
+  results.push(n * 2);
+  return n * 2; // forEach 回呼的回傳值被忽略
+});
+console.log("forEach 回呼回傳值被忽略，但副作用生效:", JSON.stringify(results));
+
+// 模擬泛型函式
+console.log("\\n--- 泛型函式模擬 ---");
+function getProperty(obj, key) {
+  if (key in obj) {
+    return obj[key];
+  }
+  throw new Error("屬性 '" + key + "' 不存在");
+}
+
+var person = { name: "Alice", age: 30, city: "Taipei" };
+console.log("getProperty(person, 'name'):", getProperty(person, "name"));
+console.log("getProperty(person, 'age'):", getProperty(person, "age"));
+try {
+  getProperty(person, "email");
+} catch (e) {
+  console.log("getProperty(person, 'email'):", e.message);
+}
+`}
+/>
+
+## 面試重點整理
+
+1. **函式重載**：TypeScript 支援函式重載，讓同一函式根據不同參數有不同的回傳型別。重載簽名對外可見，實作簽名對外不可見。編譯後只留下一個函式。
+
+2. **void vs undefined**：`void` 表示不在乎回傳值，`undefined` 要求明確回傳 `undefined`。在回呼型別（`() => void`）中，回傳值被忽略但不報錯；在函式宣告中回傳值會報錯。
+
+3. **型別謂詞**：使用 `value is Type` 語法建立自訂型別守衛，讓 TypeScript 在 `if` 分支中自動收窄型別。常用於過濾 null/undefined 和驗證外部資料。
+
+4. **可選參數 vs 預設值**：可選參數（`?`）的型別包含 `undefined`，預設值參數在呼叫者傳入 `undefined` 時使用預設值。可選參數必須在必要參數之後。
+
+5. **this 參數**：TypeScript 允許在第一個參數位置指定 `this` 的型別，編譯後該參數會被移除。搭配 `noImplicitThis` 選項可以強制標註。
+
+6. **泛型函式基礎**：使用 `<T>` 型別參數讓函式適用於多種型別，同時保持輸入與輸出的型別關聯。`extends` 約束限制 `T` 的範圍。
+
+7. **回呼函式型別**：定義精確的回呼型別有助於呼叫者正確使用函式。TypeScript 的上下文型別推論（contextual typing）會自動推導回呼參數型別。
+
+8. **rest 參數**：使用 `...args: T[]` 接收可變數量的參數，也可以搭配元組型別 `[string, number, ...boolean[]]` 做精確約束。
+
+---
+
+下一篇我們將深入探討 **泛型（Generics）**，學習如何建立可重複使用的型別安全抽象，包括泛型類別、泛型約束、條件型別等進階主題。

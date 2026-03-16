@@ -1,0 +1,602 @@
+# Context 與狀態管理
+
+在 React 應用中，資料通常透過 props 由上往下傳遞。但當多個層級的元件都需要存取同一份資料時，逐層傳遞 props（prop drilling）會讓程式碼變得冗長且難以維護。Context 提供了一種在元件樹中「跨層級」共享資料的方式。
+
+## Prop Drilling 問題
+
+```jsx
+// 需要把 theme 從 App 傳到 Button，中間經過 Toolbar 和 Panel
+function App() {
+  const [theme, setTheme] = useState('light');
+  return <Toolbar theme={theme} />;
+}
+
+function Toolbar({ theme }) {
+  return <Panel theme={theme} />;  // Toolbar 自己不用 theme，只是中轉
+}
+
+function Panel({ theme }) {
+  return <Button theme={theme} />; // Panel 也只是中轉
+}
+
+function Button({ theme }) {
+  return <button className={theme}>按鈕</button>; // 真正使用 theme 的元件
+}
+```
+
+中間的 `Toolbar` 和 `Panel` 被迫接受並傳遞 `theme`，這就是 prop drilling。當應用變大、層級變深時，這個問題會越來越嚴重。
+
+## Context 基礎：createContext / Provider / useContext
+
+Context 的使用分為三個步驟：
+
+### 步驟一：建立 Context
+
+```jsx
+import { createContext } from 'react';
+
+// 傳入的值是「沒有 Provider」時的預設值
+const ThemeContext = createContext('light');
+```
+
+### 步驟二：提供 Context（Provider）
+
+```jsx
+function App() {
+  const [theme, setTheme] = useState('light');
+
+  return (
+    <ThemeContext.Provider value={theme}>
+      <Toolbar />
+      <button onClick={() => setTheme(t => t === 'light' ? 'dark' : 'light')}>
+        切換主題
+      </button>
+    </ThemeContext.Provider>
+  );
+}
+```
+
+### 步驟三：消費 Context（useContext）
+
+```jsx
+import { useContext } from 'react';
+
+function Button() {
+  const theme = useContext(ThemeContext);
+  // 不需要透過 props 傳遞，直接取得最近的 Provider 的值
+  return <button className={theme}>按鈕</button>;
+}
+```
+
+### 完整的 Context 模式
+
+實際專案中，通常會將 Context 的建立、Provider 和自訂 Hook 放在同一個檔案中：
+
+```jsx
+// ThemeContext.jsx
+import { createContext, useContext, useState, useCallback } from 'react';
+
+const ThemeContext = createContext(null);
+
+export function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState('light');
+
+  const toggleTheme = useCallback(() => {
+    setTheme(t => t === 'light' ? 'dark' : 'light');
+  }, []);
+
+  const value = { theme, toggleTheme };
+
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (context === null) {
+    throw new Error('useTheme 必須在 ThemeProvider 中使用');
+  }
+  return context;
+}
+```
+
+```jsx
+// App.jsx
+import { ThemeProvider } from './ThemeContext';
+
+function App() {
+  return (
+    <ThemeProvider>
+      <Header />
+      <MainContent />
+    </ThemeProvider>
+  );
+}
+
+// 任何子元件中
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button onClick={toggleTheme}>
+      目前主題：{theme}
+    </button>
+  );
+}
+```
+
+<Callout type="tip" title="自訂 Hook 加上錯誤檢查">
+建議為每個 Context 建立對應的自訂 Hook（如 `useTheme`），並在 Hook 中檢查 context 是否為 null。這樣當開發者忘記包裹 Provider 時，會得到清楚的錯誤訊息，而不是難以追蹤的 undefined 問題。
+</Callout>
+
+## Context 常見使用場景
+
+### 主題切換
+
+```jsx
+const ThemeContext = createContext({ theme: 'light', toggleTheme: () => {} });
+
+function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(t => t === 'light' ? 'dark' : 'light');
+  }, []);
+
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+```
+
+### 多語言（i18n）
+
+```jsx
+const translations = {
+  'zh-TW': { greeting: '你好', logout: '登出' },
+  'en': { greeting: 'Hello', logout: 'Logout' },
+  'ja': { greeting: 'こんにちは', logout: 'ログアウト' }
+};
+
+const I18nContext = createContext(null);
+
+function I18nProvider({ children }) {
+  const [locale, setLocale] = useState('zh-TW');
+  const t = useCallback((key) => translations[locale]?.[key] || key, [locale]);
+
+  return (
+    <I18nContext.Provider value={{ locale, setLocale, t }}>
+      {children}
+    </I18nContext.Provider>
+  );
+}
+
+function Greeting() {
+  const { t } = useContext(I18nContext);
+  return <h1>{t('greeting')}</h1>;
+}
+```
+
+### 認證狀態
+
+```jsx
+const AuthContext = createContext(null);
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 啟動時檢查既有的登入狀態
+    checkAuthStatus()
+      .then(setUser)
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const login = useCallback(async (credentials) => {
+    const userData = await loginAPI(credentials);
+    setUser(userData);
+  }, []);
+
+  const logout = useCallback(async () => {
+    await logoutAPI();
+    setUser(null);
+  }, []);
+
+  if (loading) return <LoadingScreen />;
+
+  return (
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+```
+
+## Context 效能問題
+
+Context 最常被提到的問題就是不必要的重新渲染。當 Provider 的 `value` 改變時，**所有**使用該 Context 的元件都會重新渲染，即使它們只用了 value 中的一部分。
+
+```jsx
+// 問題：任何 value 的屬性變化都會觸發所有消費者重新渲染
+function AppProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [theme, setTheme] = useState('light');
+  const [locale, setLocale] = useState('zh-TW');
+
+  // 每次渲染都建立新的物件 → 即使值沒變，參考也變了
+  return (
+    <AppContext.Provider value={{ user, setUser, theme, setTheme, locale, setLocale }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+```
+
+### 問題分析
+
+```jsx
+// 即使只有 theme 變了，使用 user 的元件也會重新渲染
+function UserAvatar() {
+  const { user } = useContext(AppContext);  // 只用 user
+  console.log('UserAvatar 渲染了');  // theme 變化時也會印出
+  return <img src={user?.avatar} />;
+}
+```
+
+## 拆分 Context 優化
+
+最有效的優化方式是將不同職責的資料拆分到不同的 Context 中：
+
+```jsx
+// 拆分成獨立的 Context
+const UserContext = createContext(null);
+const ThemeContext = createContext(null);
+const LocaleContext = createContext(null);
+
+function AppProviders({ children }) {
+  return (
+    <UserProvider>
+      <ThemeProvider>
+        <LocaleProvider>
+          {children}
+        </LocaleProvider>
+      </ThemeProvider>
+    </UserProvider>
+  );
+}
+
+// 現在 theme 變化不會觸發使用 UserContext 的元件重新渲染
+function UserAvatar() {
+  const { user } = useContext(UserContext); // 只訂閱 user 的變化
+  return <img src={user?.avatar} />;
+}
+```
+
+### 拆分 state 和 dispatch
+
+另一個常見模式是將「狀態」和「更新函式」拆開：
+
+```jsx
+const TodoStateContext = createContext(null);
+const TodoDispatchContext = createContext(null);
+
+function TodoProvider({ children }) {
+  const [state, dispatch] = useReducer(todoReducer, initialState);
+
+  return (
+    <TodoStateContext.Provider value={state}>
+      <TodoDispatchContext.Provider value={dispatch}>
+        {children}
+      </TodoDispatchContext.Provider>
+    </TodoStateContext.Provider>
+  );
+}
+
+// 只需要讀取狀態的元件
+function TodoCount() {
+  const state = useContext(TodoStateContext);
+  return <span>{state.todos.length} 項</span>;
+}
+
+// 只需要觸發更新的元件 — state 變化時不會重新渲染！
+function AddTodoButton() {
+  const dispatch = useContext(TodoDispatchContext);
+  // dispatch 是穩定的參考，不會改變
+  return <button onClick={() => dispatch({ type: 'ADD', text: '新任務' })}>新增</button>;
+}
+```
+
+### useMemo 穩定 value
+
+```jsx
+function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState('light');
+
+  // 使用 useMemo 避免在不相關的 re-render 時建立新物件
+  const value = useMemo(() => ({
+    theme,
+    toggleTheme: () => setTheme(t => t === 'light' ? 'dark' : 'light')
+  }), [theme]);
+
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+```
+
+<Callout type="warning" title="Context 不是全域狀態管理工具">
+Context 的設計初衷是「避免 prop drilling」，而不是作為全域狀態管理方案。對於頻繁更新的狀態（如表單輸入、動畫數值），Context 可能不是最佳選擇，因為它沒有選擇性訂閱（selective subscription）的能力——每次更新都會觸發所有消費者重新渲染。
+</Callout>
+
+## 外部狀態管理方案概述
+
+當應用的狀態管理需求超過 Context 能輕鬆處理的範圍時，可以考慮外部狀態管理方案。
+
+### Redux / Redux Toolkit
+
+Redux 是最成熟的 React 狀態管理方案，適合大型應用：
+
+```jsx
+// Redux Toolkit 簡化了 Redux 的使用
+import { configureStore, createSlice } from '@reduxjs/toolkit';
+
+const counterSlice = createSlice({
+  name: 'counter',
+  initialState: { value: 0 },
+  reducers: {
+    increment: (state) => { state.value += 1; }, // Immer 讓你可以「修改」state
+    decrement: (state) => { state.value -= 1; },
+    incrementByAmount: (state, action) => { state.value += action.payload; }
+  }
+});
+
+const store = configureStore({
+  reducer: { counter: counterSlice.reducer }
+});
+
+// 在元件中使用
+import { useSelector, useDispatch } from 'react-redux';
+
+function Counter() {
+  const count = useSelector(state => state.counter.value); // 選擇性訂閱
+  const dispatch = useDispatch();
+  return <button onClick={() => dispatch(counterSlice.actions.increment())}>{count}</button>;
+}
+```
+
+### Zustand
+
+Zustand 是一個輕量、簡潔的狀態管理方案：
+
+```jsx
+import { create } from 'zustand';
+
+const useStore = create((set) => ({
+  count: 0,
+  increment: () => set((state) => ({ count: state.count + 1 })),
+  decrement: () => set((state) => ({ count: state.count - 1 })),
+  reset: () => set({ count: 0 })
+}));
+
+function Counter() {
+  const count = useStore(state => state.count);       // 選擇性訂閱
+  const increment = useStore(state => state.increment);
+  return <button onClick={increment}>{count}</button>;
+}
+```
+
+### Jotai
+
+Jotai 採用原子化的狀態管理方式，每個狀態是一個獨立的 atom：
+
+```jsx
+import { atom, useAtom } from 'jotai';
+
+const countAtom = atom(0);
+const doubleAtom = atom((get) => get(countAtom) * 2); // 衍生 atom
+
+function Counter() {
+  const [count, setCount] = useAtom(countAtom);
+  const [double] = useAtom(doubleAtom);
+  return (
+    <div>
+      <p>{count} x 2 = {double}</p>
+      <button onClick={() => setCount(c => c + 1)}>+1</button>
+    </div>
+  );
+}
+```
+
+### 方案比較
+
+| 方案 | 包大小 | 學習曲線 | 適用規模 | 特色 |
+|------|--------|----------|----------|------|
+| Context | 0（內建）| 低 | 小型 | 內建方案，適合低頻更新 |
+| Redux Toolkit | ~11kb | 中 | 大型 | 生態系豐富，DevTools 強大 |
+| Zustand | ~1kb | 低 | 中小型 | API 極簡，效能好 |
+| Jotai | ~3kb | 低 | 中型 | 原子化設計，精細的更新控制 |
+
+## 何時該用 Context vs 外部方案
+
+### 適合用 Context 的場景
+
+- **主題 / 語言 / 認證**等低頻變動的全域設定
+- **元件樹局部**的共享狀態（不是全域的）
+- 資料更新頻率低，消費者數量少
+- 不想引入額外依賴的小型專案
+
+### 適合用外部方案的場景
+
+- **頻繁更新**的狀態（如即時資料、表單）
+- 需要**選擇性訂閱**（只在特定欄位變化時重新渲染）
+- 複雜的**狀態派生**和**非同步操作**
+- 需要強大的**開發者工具**（time-travel debugging）
+- **多人協作**的大型專案，需要規範化的狀態管理模式
+
+## 狀態管理最佳實踐
+
+### 狀態分層
+
+```
+┌──────────────────────────────────────┐
+│  伺服器狀態（Server State）          │  → TanStack Query / SWR
+│  API 資料、快取                      │
+├──────────────────────────────────────┤
+│  全域 UI 狀態（Global UI State）     │  → Context / Zustand / Redux
+│  主題、語言、認證、通知              │
+├──────────────────────────────────────┤
+│  共享元件狀態（Shared Component）    │  → 提升 state / Context
+│  多個元件共用的篩選條件等            │
+├──────────────────────────────────────┤
+│  區域元件狀態（Local State）         │  → useState / useReducer
+│  表單輸入、開關、暫存              │
+└──────────────────────────────────────┘
+```
+
+### 選擇原則
+
+1. **從最低層級開始**：能用 `useState` 就不要用 Context
+2. **伺服器資料用專門工具**：不要把 API 回應放進全域 state，用 TanStack Query 或 SWR
+3. **區分狀態的「類型」**：UI 狀態、伺服器狀態、表單狀態各用適合的工具
+4. **共置原則（Colocation）**：把狀態放在最靠近使用它的元件中
+5. **避免單一巨大 store**：多個小型、專注的 store 優於一個大型 store
+
+## 互動範例：主題切換 Context
+
+<CodePlayground
+  title="Context 主題切換範例"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { margin: 0; padding: 0; transition: background-color 0.3s, color 0.3s; }
+.app { min-height: 300px; padding: 20px; transition: all 0.3s; }
+.app.light { background: #ffffff; color: #1e293b; }
+.app.dark { background: #1e293b; color: #e2e8f0; }
+.header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid; margin-bottom: 16px; }
+.header.light { border-color: #e2e8f0; }
+.header.dark { border-color: #475569; }
+.theme-btn { padding: 8px 16px; border: 2px solid; border-radius: 20px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s; }
+.theme-btn.light { background: #f8fafc; color: #1e293b; border-color: #cbd5e1; }
+.theme-btn.light:hover { background: #e2e8f0; }
+.theme-btn.dark { background: #334155; color: #e2e8f0; border-color: #64748b; }
+.theme-btn.dark:hover { background: #475569; }
+.card { padding: 16px; border-radius: 8px; margin-bottom: 12px; transition: all 0.3s; }
+.card.light { background: #f8fafc; border: 1px solid #e2e8f0; }
+.card.dark { background: #334155; border: 1px solid #475569; }
+.card h4 { margin: 0 0 8px 0; }
+.card p { margin: 0; font-size: 14px; opacity: 0.8; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.badge.light { background: #dbeafe; color: #1e40af; }
+.badge.dark { background: #1e3a5f; color: #93c5fd; }
+.render-log { font-size: 11px; font-family: monospace; padding: 8px; border-radius: 4px; margin-top: 12px; max-height: 100px; overflow-y: auto; }
+.render-log.light { background: #fef3c7; color: #92400e; }
+.render-log.dark { background: #422006; color: #fbbf24; }`}
+  defaultJS={`const { createContext, useContext, useState, useCallback, useMemo } = React;
+
+var ThemeContext = createContext(null);
+
+function ThemeProvider(props) {
+  var _s = useState('light');
+  var theme = _s[0], setTheme = _s[1];
+
+  var toggleTheme = useCallback(function() {
+    setTheme(function(t) { return t === 'light' ? 'dark' : 'light'; });
+  }, []);
+
+  var value = useMemo(function() {
+    return { theme: theme, toggleTheme: toggleTheme };
+  }, [theme, toggleTheme]);
+
+  return React.createElement(ThemeContext.Provider, { value: value }, props.children);
+}
+
+function useTheme() {
+  var ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
+  return ctx;
+}
+
+var renderCounts = { Header: 0, Card: 0, Badge: 0 };
+
+function Header() {
+  var ctx = useTheme();
+  renderCounts.Header++;
+  return React.createElement('div', { className: 'header ' + ctx.theme },
+    React.createElement('h3', null, '主題切換範例'),
+    React.createElement('button', {
+      className: 'theme-btn ' + ctx.theme,
+      onClick: ctx.toggleTheme
+    }, ctx.theme === 'light' ? '切換深色模式' : '切換淺色模式')
+  );
+}
+
+function InfoCard(props) {
+  var ctx = useTheme();
+  renderCounts.Card++;
+  return React.createElement('div', { className: 'card ' + ctx.theme },
+    React.createElement('h4', null, props.title),
+    React.createElement('p', null, props.children)
+  );
+}
+
+function ThemeBadge() {
+  var ctx = useTheme();
+  renderCounts.Badge++;
+  return React.createElement('span', { className: 'badge ' + ctx.theme },
+    '目前主題：' + ctx.theme
+  );
+}
+
+function RenderLog() {
+  var ctx = useTheme();
+  return React.createElement('div', { className: 'render-log ' + ctx.theme },
+    '渲染次數 — Header: ' + renderCounts.Header +
+    ' | Card: ' + renderCounts.Card +
+    ' | Badge: ' + renderCounts.Badge +
+    '（切換主題時所有消費者都會重新渲染）'
+  );
+}
+
+function App() {
+  var ctx = useTheme();
+  return React.createElement('div', { className: 'app ' + ctx.theme },
+    React.createElement(Header, null),
+    React.createElement('div', { style: { marginBottom: 12 } }, React.createElement(ThemeBadge, null)),
+    React.createElement(InfoCard, { title: 'Context 特性' },
+      'Provider 的 value 變化時，所有使用 useContext 的子元件都會重新渲染。'),
+    React.createElement(InfoCard, { title: '優化方式' },
+      '可以透過拆分 Context、useMemo 穩定 value、或使用外部狀態管理方案來減少不必要的重新渲染。'),
+    React.createElement(RenderLog, null)
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(ThemeProvider, null, React.createElement(App, null)));`}
+  dependencies={["react"]}
+/>
+
+## 面試重點整理
+
+1. **Context 解決什麼問題**：避免 prop drilling，讓元件樹中的任何層級都能存取共享資料
+2. **Context 三步驟**：`createContext` 建立 → `Provider` 提供值 → `useContext` 消費值
+3. **Context 效能問題**：Provider value 變化時，所有消費者都會重新渲染，沒有選擇性訂閱
+4. **優化策略**：拆分 Context、分離 state 和 dispatch、useMemo 穩定 value
+5. **Context vs Redux / Zustand**：Context 適合低頻更新的全域設定；外部方案適合頻繁更新、需要選擇性訂閱的場景
+6. **狀態分層**：區域 state → 共享 state → 全域 UI state → 伺服器 state，各用適合的工具
+7. **共置原則**：狀態應放在最靠近使用它的位置，不要什麼都塞進全域 store
+8. **伺服器狀態與 UI 狀態要分開管理**：前者用 TanStack Query / SWR，後者用 Context 或狀態管理庫
+
+這是 React 核心概念系列的最後一篇。掌握了元件、Hook 和狀態管理之後，你已經具備了建構完整 React 應用的基礎。接下來可以探索 React Router、Server Components 等進階主題。

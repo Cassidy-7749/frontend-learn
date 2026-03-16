@@ -1,0 +1,469 @@
+# 分支管理
+
+分支（Branch）是 Git 最強大也最輕量的功能。不同於其他版本控制系統需要複製整個專案目錄，Git 的分支只是一個指向特定 commit 的指標，建立和切換幾乎是瞬間完成。理解分支的本質，是掌握 Git 進階操作的基礎。
+
+## 分支的本質：指向 Commit 的指標
+
+在 Git 中，每次提交（commit）都會產生一個 commit 物件，包含：
+
+- 一個唯一的 SHA-1 雜湊值（如 `a1b2c3d`）
+- 指向前一次 commit 的指標（parent）
+- 提交的快照內容（tree）
+- 作者資訊和提交訊息
+
+而**分支本質上就是一個指向某個 commit 的可移動指標**。當你在某個分支上建立新的 commit 時，這個指標會自動向前移動到最新的 commit。
+
+```bash
+# 分支只是一個 40 字元的參照檔案
+cat .git/refs/heads/main
+# 輸出：a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0
+
+# 這就是 main 分支——一個指向特定 commit 的指標
+```
+
+## HEAD 指標
+
+HEAD 是一個特殊的指標，指向你目前所在的分支（或直接指向某個 commit）。可以把 HEAD 想像成「你現在在哪裡」的標記。
+
+```bash
+# 查看 HEAD 指向哪裡
+cat .git/HEAD
+# 輸出：ref: refs/heads/main   ← 指向 main 分支
+
+# HEAD 通常是間接參照：
+# HEAD → main → commit abc1234
+```
+
+### 分離 HEAD 狀態（Detached HEAD）
+
+當 HEAD 直接指向一個 commit 而不是分支時，就進入了「分離 HEAD」狀態。這通常發生在 checkout 到特定 commit 時：
+
+```bash
+# 切換到特定 commit（進入分離 HEAD）
+git checkout a1b2c3d
+# 警告：You are in 'detached HEAD' state...
+
+# 此時 HEAD 直接指向 commit，而非分支
+cat .git/HEAD
+# 輸出：a1b2c3d4e5f6g7h8i9j0...（直接是 commit hash）
+```
+
+<Callout type="warning" title="分離 HEAD 的風險">
+在分離 HEAD 狀態下建立的 commit 不屬於任何分支。當你切換到其他分支後，這些 commit 會變成「孤兒 commit」，最終被 Git 的垃圾回收機制清除。如果你在分離 HEAD 狀態下做了有價值的修改，記得建立一個新分支來保存它：`git checkout -b new-branch-name`。
+</Callout>
+
+## 分支基本操作
+
+### 建立分支
+
+```bash
+# 建立新分支（但不切換過去）
+git branch feature-login
+
+# 建立並立即切換到新分支
+git checkout -b feature-login
+# 或使用 Git 2.23+ 的新指令
+git switch -c feature-login
+
+# 從特定 commit 建立分支
+git branch hotfix-123 a1b2c3d
+
+# 從遠端分支建立本地分支
+git checkout -b feature-login origin/feature-login
+```
+
+### 切換分支
+
+```bash
+# 傳統指令
+git checkout main
+
+# Git 2.23+ 推薦使用
+git switch main
+
+# 切換到上一個分支（類似 cd -）
+git switch -
+```
+
+### 查看分支
+
+```bash
+# 列出本地分支
+git branch
+# * main              ← 星號表示目前所在分支
+#   feature-login
+#   feature-search
+
+# 列出所有分支（含遠端）
+git branch -a
+# * main
+#   feature-login
+#   remotes/origin/main
+#   remotes/origin/feature-login
+
+# 查看每個分支的最新 commit
+git branch -v
+# * main           a1b2c3d 最新的提交訊息
+#   feature-login  d4e5f6g 新增登入頁面
+
+# 查看已合併到目前分支的分支
+git branch --merged
+
+# 查看尚未合併的分支
+git branch --no-merged
+```
+
+### 刪除分支
+
+```bash
+# 刪除已合併的分支
+git branch -d feature-login
+
+# 強制刪除（即使未合併）
+git branch -D feature-abandoned
+
+# 刪除遠端分支
+git push origin --delete feature-login
+```
+
+## 分支內部運作機制
+
+讓我們用視覺化的方式理解分支如何運作：
+
+```bash
+# 初始狀態：只有 main 分支
+# C1 ← C2 ← C3 (main, HEAD)
+
+# 建立 feature 分支
+git branch feature
+# C1 ← C2 ← C3 (main, HEAD) (feature)
+
+# 切換到 feature 分支
+git switch feature
+# C1 ← C2 ← C3 (main) (feature, HEAD)
+
+# 在 feature 上提交
+git commit -m "feat: 新增功能"
+# C1 ← C2 ← C3 (main)
+#                 ↖ C4 (feature, HEAD)
+
+# 切回 main 並提交
+git switch main
+git commit -m "fix: 修正問題"
+# C1 ← C2 ← C3 ← C5 (main, HEAD)
+#                ↖ C4 (feature)
+```
+
+<CodePlayground
+  title="模擬 Git 分支結構"
+  defaultJS={`// 用物件模擬 Git 的 commit 和 branch 系統
+class GitBranchSimulator {
+  constructor() {
+    this.commits = {};     // 所有 commit 物件
+    this.branches = {};    // 分支指標 { name: commitId }
+    this.HEAD = null;      // HEAD 指標（指向分支名稱或 commit ID）
+    this.headIsBranch = true;
+    this.nextId = 1;
+  }
+
+  // 建立 commit
+  _createCommit(message, parentId) {
+    const id = 'C' + this.nextId++;
+    this.commits[id] = {
+      id,
+      message,
+      parent: parentId || null,
+      timestamp: Date.now()
+    };
+    return id;
+  }
+
+  // git init + 首次提交
+  init() {
+    const id = this._createCommit('初始提交', null);
+    this.branches['main'] = id;
+    this.HEAD = 'main';
+    this.headIsBranch = true;
+    console.log(\`初始化儲存庫，建立 commit \${id}\`);
+    this._printGraph();
+  }
+
+  // git commit
+  commit(message) {
+    const currentCommit = this.headIsBranch
+      ? this.branches[this.HEAD]
+      : this.HEAD;
+    const newId = this._createCommit(message, currentCommit);
+
+    if (this.headIsBranch) {
+      this.branches[this.HEAD] = newId;
+      console.log(\`在 \${this.HEAD} 分支建立 commit \${newId}: "\${message}"\`);
+    } else {
+      this.HEAD = newId;
+      console.log(\`⚠️ 分離 HEAD 狀態下建立 commit \${newId}: "\${message}"\`);
+    }
+    this._printGraph();
+  }
+
+  // git branch <name>
+  branch(name) {
+    const currentCommit = this.headIsBranch
+      ? this.branches[this.HEAD]
+      : this.HEAD;
+    this.branches[name] = currentCommit;
+    console.log(\`建立分支 \${name}（指向 \${currentCommit}）\`);
+  }
+
+  // git switch <name>
+  switch(name) {
+    if (!this.branches[name]) {
+      console.log(\`❌ 分支 \${name} 不存在\`);
+      return;
+    }
+    this.HEAD = name;
+    this.headIsBranch = true;
+    console.log(\`切換到分支 \${name}\`);
+    this._printGraph();
+  }
+
+  // git checkout <commitId> — 分離 HEAD
+  checkoutCommit(commitId) {
+    if (!this.commits[commitId]) {
+      console.log(\`❌ Commit \${commitId} 不存在\`);
+      return;
+    }
+    this.HEAD = commitId;
+    this.headIsBranch = false;
+    console.log(\`⚠️ 進入分離 HEAD 狀態（指向 \${commitId}）\`);
+    this._printGraph();
+  }
+
+  // 視覺化 commit 圖
+  _printGraph() {
+    console.log('\\n--- Commit Graph ---');
+
+    // 收集每個分支的 commit 鏈
+    const allChains = {};
+    for (const [name, commitId] of Object.entries(this.branches)) {
+      const chain = [];
+      let current = commitId;
+      while (current) {
+        chain.unshift(current);
+        current = this.commits[current].parent;
+      }
+      allChains[name] = chain;
+    }
+
+    // 找出主要路徑（最長的鏈）
+    const mainChain = allChains['main'] || Object.values(allChains)[0] || [];
+    const mainSet = new Set(mainChain);
+
+    // 顯示主線
+    let mainLine = mainChain.join(' ← ');
+    const mainLabels = Object.entries(this.branches)
+      .filter(([name, id]) => mainChain[mainChain.length - 1] === id)
+      .map(([name]) => {
+        const isHead = this.headIsBranch && this.HEAD === name;
+        return isHead ? \`\${name}, HEAD\` : name;
+      });
+    if (mainLabels.length) mainLine += \` (\${mainLabels.join(', ')})\`;
+    console.log(mainLine);
+
+    // 顯示分支線
+    for (const [name, chain] of Object.entries(allChains)) {
+      if (name === 'main') continue;
+      const divergeIdx = chain.findIndex((c, i) => !mainSet.has(c));
+      if (divergeIdx > 0) {
+        const branchCommits = chain.slice(divergeIdx);
+        const padding = '  '.repeat(divergeIdx + 1);
+        const isHead = this.headIsBranch && this.HEAD === name;
+        const label = isHead ? \`(\${name}, HEAD)\` : \`(\${name})\`;
+        console.log(\`\${padding}↖ \${branchCommits.join(' ← ')} \${label}\`);
+      } else if (chain[chain.length - 1] !== mainChain[mainChain.length - 1]) {
+        // 分支指向主線上的某個 commit
+        const isHead = this.headIsBranch && this.HEAD === name;
+        const label = isHead ? \`(\${name}, HEAD)\` : \`(\${name})\`;
+        console.log(\`  \${name} → \${chain[chain.length - 1]} \${label}\`);
+      }
+    }
+
+    if (!this.headIsBranch) {
+      console.log(\`  HEAD（分離）→ \${this.HEAD}\`);
+    }
+    console.log('--------------------\\n');
+  }
+}
+
+// 模擬完整的分支操作流程
+const git = new GitBranchSimulator();
+
+git.init();
+
+git.commit('新增 README');
+git.commit('新增基本結構');
+
+// 建立 feature 分支並切換
+git.branch('feature');
+git.switch('feature');
+
+git.commit('新增登入頁面');
+git.commit('新增表單驗證');
+
+// 切回 main 繼續開發
+git.switch('main');
+git.commit('修正首頁 bug');
+
+// 展示分離 HEAD
+console.log('=== 示範分離 HEAD ===');
+git.checkoutCommit('C2');`}
+/>
+
+## 分支命名慣例
+
+好的分支命名能讓團隊一眼了解分支的用途：
+
+```bash
+# 功能開發
+feature/user-authentication
+feature/shopping-cart
+feat/JIRA-123-add-search
+
+# 錯誤修正
+fix/login-redirect-loop
+bugfix/cart-total-calculation
+hotfix/security-vulnerability
+
+# 發布相關
+release/v2.1.0
+release/2024-Q1
+
+# 其他常見前綴
+docs/update-api-documentation
+refactor/extract-auth-service
+test/add-unit-tests-for-cart
+chore/update-dependencies
+```
+
+### 命名規則
+
+- 使用小寫字母和連字號（kebab-case）
+- 避免使用空格和特殊字元
+- 包含 issue 編號或 ticket 編號便於追蹤
+- 保持簡短但具描述性
+
+## 分支策略概述
+
+不同的團隊規模和專案需求適合不同的分支策略：
+
+### Git Flow
+
+適合有明確發布週期的大型專案：
+
+```bash
+main            # 正式發布版本
+develop         # 開發整合分支
+feature/*       # 功能開發（從 develop 分出，合回 develop）
+release/*       # 發布準備（從 develop 分出，合回 main 和 develop）
+hotfix/*        # 緊急修復（從 main 分出，合回 main 和 develop）
+```
+
+### GitHub Flow
+
+適合持續部署的專案，簡單直接：
+
+```bash
+main            # 永遠保持可部署狀態
+feature-branch  # 所有開發都在功能分支上進行
+# 流程：建立分支 → 開發 → 建立 PR → Code Review → 合併 → 部署
+```
+
+### Trunk-Based Development
+
+適合經驗豐富的團隊，強調頻繁整合：
+
+```bash
+main            # 主幹，所有人直接提交或透過極短期分支合入
+# 功能分支存活時間通常不超過 1-2 天
+# 搭配 Feature Flag 控制功能開關
+```
+
+<Callout type="tip" title="選擇分支策略的考量">
+沒有完美的分支策略，選擇取決於團隊規模、發布頻率、CI/CD 成熟度。對於大多數前端專案，GitHub Flow 的簡潔性是很好的起點。隨著團隊成長和需求變化，再逐步調整策略。
+</Callout>
+
+## 遠端分支操作
+
+```bash
+# 查看遠端分支
+git remote -v
+git branch -r
+
+# 推送本地分支到遠端
+git push -u origin feature-login
+# -u 設定上游追蹤，之後只需 git push
+
+# 拉取遠端分支
+git fetch origin
+git switch feature-login  # 自動追蹤 origin/feature-login
+
+# 刪除遠端已刪除的本地追蹤分支
+git fetch --prune
+# 或
+git remote prune origin
+
+# 查看本地分支與遠端的追蹤關係
+git branch -vv
+# * main           a1b2c3d [origin/main] 最新提交
+#   feature-login  d4e5f6g [origin/feature-login: ahead 2] 本地領先 2 個 commit
+```
+
+## 常見分支操作情境
+
+### 情境一：切換分支前有未提交的修改
+
+```bash
+# 方法 1：暫存修改
+git stash
+git switch other-branch
+# 做完事情後切回來
+git switch original-branch
+git stash pop
+
+# 方法 2：帶著修改切換（如果沒有衝突的話）
+git switch other-branch  # Git 會嘗試保留你的修改
+```
+
+### 情境二：想把一個 commit 複製到另一個分支
+
+```bash
+# Cherry-pick：從其他分支挑選特定 commit
+git switch main
+git cherry-pick a1b2c3d  # 將該 commit 的修改套用到 main
+```
+
+### 情境三：重新命名分支
+
+```bash
+# 重新命名目前分支
+git branch -m new-name
+
+# 重新命名其他分支
+git branch -m old-name new-name
+
+# 更新遠端分支名稱
+git push origin --delete old-name
+git push -u origin new-name
+```
+
+## 面試重點整理
+
+- **分支的本質**：分支是指向 commit 的可移動指標，建立分支只是建立一個新的指標，幾乎零成本
+- **HEAD 指標**：HEAD 指向目前所在的分支，是你工作位置的標記
+- **分離 HEAD**：HEAD 直接指向 commit 而非分支，在此狀態下的 commit 可能會遺失，需要建立分支保存
+- **checkout vs switch**：`git switch` 是 Git 2.23+ 專門用於切換分支的指令，`git checkout` 功能過多（切換分支、還原檔案等），容易混淆
+- **分支策略**：Git Flow 適合有發布週期的專案；GitHub Flow 簡單適合持續部署；Trunk-Based 適合成熟團隊
+- **git branch --merged**：查看已合併分支，方便清理不再需要的分支
+
+## 下一篇預告
+
+了解分支後，下一步就是學習如何**合併分支**。我們將深入探討 Merge 和 Rebase 兩種合併策略的原理、差異和使用時機，幫助你在團隊協作中做出正確的選擇。

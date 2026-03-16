@@ -1,0 +1,602 @@
+# useEffect 與副作用
+
+React 元件的核心職責是根據狀態渲染 UI，但實際應用中我們經常需要執行「副作用」——例如呼叫 API、設定計時器、訂閱事件等。`useEffect` 就是 React 提供的用來處理副作用的 Hook。
+
+## 什麼是副作用（Side Effect）
+
+在函式式程式設計中，「副作用」指的是函式執行時，除了回傳值之外對外部世界產生的影響：
+
+- **資料獲取**：呼叫 API 取得資料
+- **訂閱**：WebSocket 連線、事件監聽
+- **計時器**：setTimeout、setInterval
+- **DOM 操作**：手動修改 DOM、改變標題
+- **日誌**：寫入 console 或分析服務
+
+這些操作不應該直接放在元件的渲染邏輯中，因為渲染應該是純粹的（pure）——相同的 props 和 state 應該產生相同的 JSX 輸出。
+
+## useEffect 基本語法
+
+```jsx
+import { useEffect } from 'react';
+
+function MyComponent() {
+  useEffect(() => {
+    // 副作用邏輯
+    console.log('effect 執行了');
+
+    return () => {
+      // 清除邏輯（可選）
+      console.log('cleanup 執行了');
+    };
+  }, [/* 依賴陣列 */]);
+
+  return <div>Hello</div>;
+}
+```
+
+`useEffect` 接受兩個參數：
+
+1. **Effect 函式**：包含副作用邏輯，可以回傳一個 cleanup 函式
+2. **依賴陣列**（可選）：決定 effect 何時重新執行
+
+## 依賴陣列詳解
+
+依賴陣列是 `useEffect` 最關鍵的概念，它決定了 effect 的執行時機。
+
+### 空陣列 `[]` — 只在掛載時執行
+
+```jsx
+useEffect(() => {
+  console.log('元件掛載了');
+  // 只執行一次，相當於 class 元件的 componentDidMount
+
+  return () => {
+    console.log('元件卸載了');
+    // 相當於 componentWillUnmount
+  };
+}, []);
+```
+
+### 有值的陣列 `[a, b]` — 依賴變化時執行
+
+```jsx
+function UserProfile({ userId }) {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // userId 變化時重新獲取使用者資料
+    fetch(`/api/users/${userId}`)
+      .then(res => res.json())
+      .then(data => setUser(data));
+  }, [userId]); // 只有 userId 改變時才重新執行
+
+  return <div>{user?.name}</div>;
+}
+```
+
+React 使用 `Object.is` 來比較依賴值是否改變。對於基本型別（number、string、boolean），比較值本身；對於物件和陣列，比較參考（reference）。
+
+### 沒有依賴陣列 — 每次渲染後都執行
+
+```jsx
+useEffect(() => {
+  console.log('每次渲染後都會執行');
+  // 不推薦！通常代表遺漏了依賴陣列
+});
+```
+
+<Callout type="warning" title="避免省略依賴陣列">
+省略依賴陣列意味著每次渲染都會執行 effect，這通常是一個錯誤。如果你確實需要在每次渲染後執行某些操作，請明確地思考是否有更好的替代方案。ESLint 的 `exhaustive-deps` 規則可以幫助你正確設定依賴。
+</Callout>
+
+### 依賴比較表
+
+| 依賴陣列 | 執行時機 | 類比 |
+|----------|---------|------|
+| `[]` | 只在掛載/卸載時 | componentDidMount + componentWillUnmount |
+| `[a, b]` | 掛載時 + a 或 b 變化時 | componentDidMount + componentDidUpdate（條件） |
+| 不提供 | 每次渲染後 | componentDidMount + componentDidUpdate（無條件） |
+
+## 清除函式（Cleanup）
+
+cleanup 函式是 `useEffect` 非常重要的機制，用來避免記憶體洩漏和過時的副作用。
+
+```jsx
+useEffect(() => {
+  // 設定副作用
+  const subscription = eventSource.subscribe(handler);
+
+  // 回傳 cleanup 函式
+  return () => {
+    subscription.unsubscribe();
+  };
+}, [eventSource]);
+```
+
+### Cleanup 的執行時機
+
+1. **元件卸載時**：清理所有副作用
+2. **依賴變化，下一次 effect 執行前**：先清除上一次的 effect，再執行新的
+
+```jsx
+function ChatRoom({ roomId }) {
+  useEffect(() => {
+    const connection = createConnection(roomId);
+    connection.connect();
+    console.log(`連接到房間 ${roomId}`);
+
+    return () => {
+      connection.disconnect();
+      console.log(`離開房間 ${roomId}`);
+    };
+  }, [roomId]);
+  // roomId 從 "general" 變成 "travel" 時：
+  // 1. cleanup: 離開房間 general
+  // 2. effect: 連接到房間 travel
+}
+```
+
+### 常見需要 cleanup 的場景
+
+```jsx
+// 計時器
+useEffect(() => {
+  const id = setInterval(() => {
+    setCount(c => c + 1);
+  }, 1000);
+  return () => clearInterval(id);
+}, []);
+
+// 事件監聽
+useEffect(() => {
+  const handler = (e) => setPosition({ x: e.clientX, y: e.clientY });
+  window.addEventListener('mousemove', handler);
+  return () => window.removeEventListener('mousemove', handler);
+}, []);
+
+// AbortController 取消 fetch
+useEffect(() => {
+  const controller = new AbortController();
+  fetch(`/api/data/${id}`, { signal: controller.signal })
+    .then(res => res.json())
+    .then(setData)
+    .catch(err => {
+      if (err.name !== 'AbortError') throw err;
+    });
+  return () => controller.abort();
+}, [id]);
+```
+
+## 常見副作用模式
+
+### API 呼叫與資料獲取
+
+```jsx
+function UserList() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function fetchUsers() {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/users');
+        if (!res.ok) throw new Error('請求失敗');
+        const data = await res.json();
+
+        if (!isCancelled) {
+          setUsers(data);
+          setError(null);
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          setError(err.message);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchUsers();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  if (loading) return <p>載入中...</p>;
+  if (error) return <p>錯誤：{error}</p>;
+  return <ul>{users.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+}
+```
+
+<Callout type="tip" title="現代資料獲取方案">
+在實際專案中，直接使用 `useEffect` 進行資料獲取會面臨許多問題（競態條件、快取、重試等）。建議使用專門的資料獲取函式庫如 TanStack Query（React Query）、SWR，或是框架內建的資料載入機制（Next.js 的 Server Components、Remix 的 loader）。
+</Callout>
+
+### 訂閱外部事件
+
+```jsx
+function WindowSize() {
+  const [size, setSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
+
+  useEffect(() => {
+    function handleResize() {
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return <p>視窗大小：{size.width} x {size.height}</p>;
+}
+```
+
+### 修改文件標題
+
+```jsx
+function PageTitle({ title }) {
+  useEffect(() => {
+    const prevTitle = document.title;
+    document.title = title;
+
+    return () => {
+      document.title = prevTitle;
+    };
+  }, [title]);
+}
+```
+
+## useEffect vs useLayoutEffect
+
+React 提供了兩個相似的 Hook，它們的差別在於執行時機：
+
+| 特性 | useEffect | useLayoutEffect |
+|------|-----------|-----------------|
+| 執行時機 | 瀏覽器繪製（paint）之後 | DOM 更新後、瀏覽器繪製之前 |
+| 是否阻塞渲染 | 否（非同步） | 是（同步） |
+| 適用場景 | 大多數副作用 | 需要在繪製前讀取/修改 DOM |
+
+```jsx
+// useLayoutEffect 的典型使用場景：避免畫面閃爍
+function Tooltip({ targetRef, text }) {
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const tooltipRef = useRef(null);
+
+  // 使用 useLayoutEffect 在繪製前計算位置
+  useLayoutEffect(() => {
+    const rect = targetRef.current.getBoundingClientRect();
+    const tooltipRect = tooltipRef.current.getBoundingClientRect();
+    setPosition({
+      top: rect.top - tooltipRect.height - 8,
+      left: rect.left + (rect.width - tooltipRect.width) / 2
+    });
+  }, [targetRef, text]);
+
+  return (
+    <div ref={tooltipRef} style={{ position: 'fixed', ...position }}>
+      {text}
+    </div>
+  );
+}
+```
+
+如果使用 `useEffect`，使用者可能會看到 tooltip 先出現在錯誤的位置再跳到正確的位置（閃爍）。`useLayoutEffect` 確保在瀏覽器繪製之前就完成定位計算。
+
+## 常見陷阱
+
+### 陷阱一：無限迴圈
+
+```jsx
+// 錯誤：每次渲染都產生新物件，觸發無限迴圈
+function BadComponent() {
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    setData([1, 2, 3]); // 設定新陣列 → 觸發重新渲染 → effect 再次執行
+  }); // 沒有依賴陣列！
+
+  // 或者：
+  const options = { page: 1 }; // 每次渲染都是新的參考
+
+  useEffect(() => {
+    fetchData(options);
+  }, [options]); // options 每次都是新物件，永遠「不同」
+}
+
+// 正確：將物件移入 effect 內部，或使用 useMemo
+function GoodComponent() {
+  useEffect(() => {
+    const options = { page: 1 };
+    fetchData(options);
+  }, []); // 或依賴具體的基本型別值
+}
+```
+
+### 陷阱二：過時閉包（Stale Closure）
+
+```jsx
+// 問題：count 永遠是 0
+function StaleCounter() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log(count); // 永遠印出 0，因為閉包捕獲了初始值
+      setCount(count + 1); // 永遠設成 1
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // 空依賴 → 閉包只捕獲了 count = 0
+}
+
+// 解決方案 1：使用函式式更新
+useEffect(() => {
+  const id = setInterval(() => {
+    setCount(prev => prev + 1); // 使用最新的值
+  }, 1000);
+  return () => clearInterval(id);
+}, []);
+
+// 解決方案 2：使用 useRef 追蹤最新值
+const countRef = useRef(count);
+countRef.current = count;
+
+useEffect(() => {
+  const id = setInterval(() => {
+    console.log(countRef.current); // 永遠是最新值
+  }, 1000);
+  return () => clearInterval(id);
+}, []);
+```
+
+### 陷阱三：在 effect 中使用 async
+
+```jsx
+// 錯誤：useEffect 不能直接使用 async 函式
+useEffect(async () => {
+  const data = await fetchData(); // 回傳 Promise，不是 cleanup 函式！
+  setData(data);
+}, []);
+
+// 正確：在內部定義 async 函式
+useEffect(() => {
+  async function loadData() {
+    const data = await fetchData();
+    setData(data);
+  }
+  loadData();
+}, []);
+```
+
+## 嚴格模式下的雙重執行
+
+React 18 的嚴格模式（StrictMode）會在開發環境中故意執行 effect 兩次：
+
+```
+掛載 → 執行 effect → 執行 cleanup → 再次執行 effect
+```
+
+這是為了幫助開發者發現 cleanup 邏輯中的問題。如果你的 effect 在雙重執行後行為異常，通常代表 cleanup 沒有正確實作。
+
+```jsx
+// 如果 cleanup 正確，雙重執行不會有問題
+useEffect(() => {
+  const connection = createConnection(roomId);
+  connection.connect();
+  return () => connection.disconnect();
+  // 第一次：connect → disconnect → connect（最終結果：一個連線）
+}, [roomId]);
+
+// 如果 cleanup 不正確，雙重執行會暴露問題
+useEffect(() => {
+  let count = 0;
+  const id = setInterval(() => {
+    count++;
+    document.title = `計數: ${count}`;
+  }, 1000);
+  // 忘記 cleanup！雙重執行後會有兩個 interval 同時跑
+  // return () => clearInterval(id);  ← 應該加上這行
+}, []);
+```
+
+<Callout type="info" title="嚴格模式只影響開發環境">
+雙重執行只發生在開發環境中。在 production build 中，effect 只會執行一次。不要因為嚴格模式的行為而移除 StrictMode，而是修正你的 effect 讓它能正確處理重複執行。
+</Callout>
+
+## 資料獲取最佳模式
+
+在 effect 中獲取資料時，有幾個重要的模式需要注意：
+
+### 處理競態條件（Race Condition）
+
+```jsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function search() {
+      const data = await fetchResults(query);
+      if (!ignore) {
+        setResults(data);
+      }
+    }
+
+    search();
+    return () => { ignore = true; };
+  }, [query]);
+  // 使用者快速輸入 "a" → "ab" → "abc"
+  // 如果 "a" 的請求最慢回來，沒有 ignore 就會覆蓋 "abc" 的結果
+}
+```
+
+### 使用 AbortController
+
+```jsx
+useEffect(() => {
+  const controller = new AbortController();
+
+  async function fetchData() {
+    try {
+      const res = await fetch(`/api/search?q=${query}`, {
+        signal: controller.signal
+      });
+      const data = await res.json();
+      setResults(data);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        // 請求被取消，正常行為
+      } else {
+        setError(err.message);
+      }
+    }
+  }
+
+  fetchData();
+  return () => controller.abort();
+}, [query]);
+```
+
+## 互動範例：計時器與 Cleanup
+
+<CodePlayground
+  title="計時器範例 — cleanup 機制展示"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: system-ui, sans-serif; padding: 16px; }
+.container { max-width: 480px; margin: 0 auto; }
+.timer-display { font-size: 48px; font-weight: bold; text-align: center; margin: 20px 0; color: #3b82f6; }
+.controls { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; }
+.controls button { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.btn-start { background: #10b981; color: white; }
+.btn-stop { background: #ef4444; color: white; }
+.btn-reset { background: #6b7280; color: white; }
+.log { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; max-height: 200px; overflow-y: auto; font-size: 13px; font-family: monospace; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid #f1f5f9; }
+.log-setup { color: #10b981; }
+.log-cleanup { color: #ef4444; }
+.log-tick { color: #3b82f6; }
+.speed-controls { text-align: center; margin: 12px 0; }
+.speed-controls label { margin-right: 12px; cursor: pointer; }`}
+  defaultJS={`const { useState, useEffect, useRef, useCallback } = React;
+
+function Timer() {
+  const [isRunning, setIsRunning] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [speed, setSpeed] = useState(1000);
+  const [logs, setLogs] = useState([]);
+  const logEndRef = useRef(null);
+
+  var addLog = useCallback(function(msg, type) {
+    var time = new Date().toLocaleTimeString();
+    setLogs(function(prev) {
+      return prev.concat([{ msg: msg, type: type, time: time }]);
+    });
+  }, []);
+
+  useEffect(function() {
+    if (!isRunning) return;
+
+    addLog('setup: setInterval(' + speed + 'ms) 已建立', 'setup');
+
+    var id = setInterval(function() {
+      setSeconds(function(s) { return s + 1; });
+      addLog('tick: 計時器 +1', 'tick');
+    }, speed);
+
+    return function() {
+      clearInterval(id);
+      addLog('cleanup: clearInterval 已執行', 'cleanup');
+    };
+  }, [isRunning, speed, addLog]);
+
+  useEffect(function() {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  var formatTime = function(s) {
+    var min = Math.floor(s / 60);
+    var sec = s % 60;
+    return (min < 10 ? '0' : '') + min + ':' + (sec < 10 ? '0' : '') + sec;
+  };
+
+  return React.createElement('div', { className: 'container' },
+    React.createElement('h3', { style: { textAlign: 'center', marginBottom: 4 } }, 'useEffect Cleanup 機制展示'),
+    React.createElement('p', { style: { textAlign: 'center', color: '#64748b', fontSize: 13 } },
+      '觀察 effect 的 setup 和 cleanup 在不同操作下的觸發順序'),
+    React.createElement('div', { className: 'timer-display' }, formatTime(seconds)),
+    React.createElement('div', { className: 'speed-controls' },
+      React.createElement('strong', null, '速度：'),
+      ['2000', '1000', '500'].map(function(ms) {
+        return React.createElement('label', { key: ms },
+          React.createElement('input', {
+            type: 'radio', name: 'speed', value: ms,
+            checked: speed === Number(ms),
+            onChange: function() { setSpeed(Number(ms)); }
+          }),
+          ' ' + (ms === '2000' ? '慢 (2s)' : ms === '1000' ? '正常 (1s)' : '快 (0.5s)')
+        );
+      })
+    ),
+    React.createElement('div', { className: 'controls' },
+      React.createElement('button', {
+        className: 'btn-start', onClick: function() { setIsRunning(true); },
+        disabled: isRunning
+      }, '開始'),
+      React.createElement('button', {
+        className: 'btn-stop', onClick: function() { setIsRunning(false); },
+        disabled: !isRunning
+      }, '暫停'),
+      React.createElement('button', {
+        className: 'btn-reset',
+        onClick: function() { setIsRunning(false); setSeconds(0); setLogs([]); }
+      }, '重置')
+    ),
+    React.createElement('div', { className: 'log' },
+      logs.length === 0
+        ? React.createElement('div', { style: { color: '#94a3b8' } }, '點擊「開始」後，這裡會顯示 effect 的執行日誌...')
+        : logs.map(function(entry, i) {
+            var cls = entry.type === 'setup' ? 'log-setup' : entry.type === 'cleanup' ? 'log-cleanup' : 'log-tick';
+            return React.createElement('div', { key: i, className: 'log-entry ' + cls },
+              '[' + entry.time + '] ' + entry.msg
+            );
+          }),
+      React.createElement('div', { ref: logEndRef })
+    ),
+    React.createElement('div', { style: { marginTop: 12, fontSize: 13, color: '#64748b' } },
+      React.createElement('p', null, '試試看：切換速度時，觀察 cleanup 會先清除舊的 interval，再 setup 新的。')
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(Timer));`}
+  dependencies={["react"]}
+/>
+
+## 面試重點整理
+
+1. **useEffect 的執行時機**：在瀏覽器繪製之後非同步執行，不會阻塞渲染
+2. **依賴陣列的三種用法**：空陣列（掛載/卸載）、有值陣列（依賴變化時）、不提供（每次渲染後）
+3. **Cleanup 的重要性**：防止記憶體洩漏，在依賴變化前和元件卸載時執行
+4. **useEffect vs useLayoutEffect**：前者不阻塞渲染，後者在繪製前同步執行
+5. **過時閉包問題**：使用函式式更新或 useRef 來存取最新值
+6. **嚴格模式雙重執行**：用來檢測 cleanup 是否正確實作，只在開發環境生效
+7. **資料獲取的競態條件**：使用 `ignore` 旗標或 `AbortController` 來取消過時的請求
+8. **為何不能直接傳 async 函式給 useEffect**：因為 async 函式回傳 Promise，不是 cleanup 函式
+
+下一篇我們將學習 `useRef` 與 DOM 操作，了解如何在 React 中直接存取和操作 DOM 元素。

@@ -1,0 +1,637 @@
+# 元件與 Props
+
+React 的核心理念是將 UI 拆分為獨立、可複用的元件。每個元件就像一個 JavaScript 函式，接受輸入（Props），並回傳描述畫面的 React 元素。掌握元件設計與 Props 傳遞模式，是建構大型 React 應用的基礎。
+
+## 函式元件定義
+
+在現代 React 開發中，函式元件（Function Component）是最主要的元件定義方式：
+
+```jsx
+// 基本函式元件
+function Welcome() {
+  return <h1>Hello, World!</h1>;
+}
+
+// 箭頭函式寫法
+const Welcome = () => {
+  return <h1>Hello, World!</h1>;
+};
+
+// 單行回傳可省略 return
+const Welcome = () => <h1>Hello, World!</h1>;
+```
+
+### 元件命名規則
+
+```jsx
+// ✅ 大寫開頭 — React 識別為自訂元件
+function MyComponent() { return <div>OK</div>; }
+
+// ❌ 小寫開頭 — React 會視為 HTML 標籤
+function myComponent() { return <div>不會正確運作</div>; }
+```
+
+### 元件檔案結構慣例
+
+```
+// 一個元件一個檔案
+components/
+  UserCard.jsx       // 或 UserCard.tsx
+  UserCard.css
+  UserCard.test.js
+```
+
+## Props 傳遞與解構
+
+Props（Properties 的縮寫）是父元件傳遞資料給子元件的機制：
+
+```jsx
+// 父元件傳遞 props
+function App() {
+  return (
+    <UserCard
+      name="小明"
+      age={25}
+      email="ming@example.com"
+      isAdmin={false}
+    />
+  );
+}
+
+// 子元件接收 props（物件形式）
+function UserCard(props) {
+  return (
+    <div className="card">
+      <h2>{props.name}</h2>
+      <p>年齡：{props.age}</p>
+      <p>信箱：{props.email}</p>
+      {props.isAdmin && <span className="badge">管理員</span>}
+    </div>
+  );
+}
+```
+
+### 解構 Props
+
+實務上幾乎都使用解構語法，讓程式碼更簡潔：
+
+```jsx
+// 在參數中直接解構
+function UserCard({ name, age, email, isAdmin }) {
+  return (
+    <div className="card">
+      <h2>{name}</h2>
+      <p>年齡：{age}</p>
+      <p>信箱：{email}</p>
+      {isAdmin && <span className="badge">管理員</span>}
+    </div>
+  );
+}
+
+// 收集剩餘 props
+function Button({ children, variant, ...restProps }) {
+  return (
+    <button className={`btn btn-${variant}`} {...restProps}>
+      {children}
+    </button>
+  );
+}
+
+// 展開運算子將所有屬性傳入
+<Button variant="primary" onClick={handleClick} disabled={true}>
+  送出
+</Button>
+```
+
+## Props 可傳遞的型別
+
+Props 可以傳遞任何 JavaScript 值：
+
+```jsx
+function Demo() {
+  return (
+    <MyComponent
+      // 字串
+      title="Hello"
+
+      // 數字
+      count={42}
+
+      // 布林值
+      isActive={true}
+      disabled   // 等同 disabled={true}
+
+      // 陣列
+      items={['a', 'b', 'c']}
+
+      // 物件
+      user={{ name: '小明', age: 25 }}
+
+      // 函式
+      onClick={() => console.log('clicked')}
+
+      // JSX / React 元素
+      icon={<Icon name="star" />}
+
+      // 元件本身
+      as={CustomLink}
+    />
+  );
+}
+```
+
+## children Prop
+
+`children` 是一個特殊的 prop，代表元件標籤之間的內容：
+
+```jsx
+// children 的基本用法
+function Card({ title, children }) {
+  return (
+    <div className="card">
+      <h2 className="card-title">{title}</h2>
+      <div className="card-body">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// 使用時
+function App() {
+  return (
+    <Card title="使用者資訊">
+      <p>姓名：小明</p>
+      <p>年齡：25</p>
+      <button>編輯</button>
+    </Card>
+  );
+}
+```
+
+### children 的多種形態
+
+```jsx
+// 文字
+<Container>Hello World</Container>
+
+// 單一元素
+<Container><p>段落</p></Container>
+
+// 多個元素
+<Container>
+  <Header />
+  <Main />
+  <Footer />
+</Container>
+
+// 函式作為 children（Render Props 模式）
+<DataFetcher url="/api/users">
+  {(data) => <UserList users={data} />}
+</DataFetcher>
+
+// 無 children
+<Container />
+// 此時 children 為 undefined
+```
+
+<Callout type="info" title="React.Children 工具函式">
+React 提供了 `React.Children` 工具函式來安全地操作 children：
+
+- `React.Children.map(children, fn)` — 遍歷 children
+- `React.Children.count(children)` — 計算 children 數量
+- `React.Children.only(children)` — 斷言只有一個 child
+- `React.Children.toArray(children)` — 轉為扁平陣列
+
+這些方法能正確處理 `null`、`undefined` 和 Fragment 等邊界情況。
+</Callout>
+
+## Props 預設值
+
+### 解構預設值（推薦）
+
+```jsx
+function Button({
+  variant = 'primary',
+  size = 'medium',
+  disabled = false,
+  children
+}) {
+  return (
+    <button
+      className={`btn btn-${variant} btn-${size}`}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
+
+// 使用時可以省略有預設值的 props
+<Button>送出</Button>
+// 等同於
+<Button variant="primary" size="medium" disabled={false}>送出</Button>
+```
+
+### defaultProps（已不推薦）
+
+```jsx
+// 舊版寫法 — React 18.3+ 已棄用
+function Button({ variant, size, children }) {
+  return (
+    <button className={`btn btn-${variant} btn-${size}`}>
+      {children}
+    </button>
+  );
+}
+
+Button.defaultProps = {
+  variant: 'primary',
+  size: 'medium'
+};
+```
+
+<Callout type="warning" title="defaultProps 即將被移除">
+React 團隊已宣布 `defaultProps` 將在未來的主要版本中從函式元件移除。請一律使用 ES6 解構預設值。Class component 的 `defaultProps` 仍可使用但也建議遷移。
+</Callout>
+
+## Props 型別檢查
+
+### PropTypes
+
+PropTypes 在執行時期進行型別檢查（僅在開發模式下）：
+
+```jsx
+import PropTypes from 'prop-types';
+
+function UserCard({ name, age, email, role, onEdit }) {
+  return (
+    <div>
+      <h2>{name}</h2>
+      <p>{age} 歲 — {email}</p>
+      <p>角色：{role}</p>
+      <button onClick={onEdit}>編輯</button>
+    </div>
+  );
+}
+
+UserCard.propTypes = {
+  // 基本型別
+  name: PropTypes.string.isRequired,
+  age: PropTypes.number,
+  email: PropTypes.string,
+
+  // 限定特定值
+  role: PropTypes.oneOf(['admin', 'user', 'guest']),
+
+  // 函式
+  onEdit: PropTypes.func,
+
+  // 物件形狀
+  user: PropTypes.shape({
+    id: PropTypes.number.isRequired,
+    name: PropTypes.string.isRequired,
+    email: PropTypes.string
+  }),
+
+  // 陣列中的元素型別
+  tags: PropTypes.arrayOf(PropTypes.string),
+
+  // 可渲染的內容
+  children: PropTypes.node,
+
+  // React 元素
+  icon: PropTypes.element
+};
+```
+
+### TypeScript（現代主流方案）
+
+```tsx
+// TypeScript interface 定義 props 型別
+interface UserCardProps {
+  name: string;
+  age?: number;           // 可選
+  email: string;
+  role: 'admin' | 'user' | 'guest';
+  onEdit: () => void;
+  children?: React.ReactNode;
+}
+
+function UserCard({ name, age = 0, email, role, onEdit, children }: UserCardProps) {
+  return (
+    <div>
+      <h2>{name}</h2>
+      <p>{age} 歲 — {email}</p>
+      {children}
+    </div>
+  );
+}
+```
+
+## 單向資料流
+
+React 中資料的流動方向是**由上而下**的，也稱為「單向資料流」或「單向綁定」：
+
+```jsx
+// 資料從 App → Header → Logo 單向傳遞
+function App() {
+  const [user, setUser] = useState({ name: '小明' });
+
+  return (
+    <div>
+      <Header user={user} />
+      <Main user={user} />
+    </div>
+  );
+}
+
+function Header({ user }) {
+  return (
+    <header>
+      <Logo />
+      <span>歡迎，{user.name}</span>
+    </header>
+  );
+}
+```
+
+### 回呼函式向上傳遞事件
+
+雖然資料向下流動，但子元件可以透過呼叫父元件傳入的函式來「向上通知」：
+
+```jsx
+function Parent() {
+  const [items, setItems] = useState([]);
+
+  const handleAddItem = (newItem) => {
+    setItems(prev => [...prev, newItem]);
+  };
+
+  return (
+    <div>
+      <ItemList items={items} />
+      <AddItemForm onAdd={handleAddItem} />
+    </div>
+  );
+}
+
+function AddItemForm({ onAdd }) {
+  const [text, setText] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (text.trim()) {
+      onAdd(text);  // 呼叫父元件的函式
+      setText('');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input value={text} onChange={e => setText(e.target.value)} />
+      <button type="submit">新增</button>
+    </form>
+  );
+}
+```
+
+## 組合 vs 繼承
+
+React 強烈建議使用**組合**而非繼承來複用元件邏輯。
+
+### 包含關係（Containment）
+
+```jsx
+// 通用容器元件
+function Panel({ title, children }) {
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <h3>{title}</h3>
+      </div>
+      <div className="panel-body">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// 透過組合建立特定用途的元件
+function WarningPanel({ message }) {
+  return (
+    <Panel title="警告">
+      <p className="warning-text">{message}</p>
+    </Panel>
+  );
+}
+```
+
+### 特化關係（Specialization）
+
+```jsx
+// 通用按鈕
+function Button({ variant, size, children, ...props }) {
+  return (
+    <button className={`btn btn-${variant} btn-${size}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+// 特化按鈕 — 透過組合實現，而非繼承
+function DangerButton({ children, ...props }) {
+  return (
+    <Button variant="danger" size="medium" {...props}>
+      ⚠️ {children}
+    </Button>
+  );
+}
+
+function SubmitButton({ children, ...props }) {
+  return (
+    <Button variant="primary" size="large" type="submit" {...props}>
+      {children}
+    </Button>
+  );
+}
+```
+
+### 插槽模式（Slots）
+
+```jsx
+// 使用具名 props 實現插槽
+function Layout({ header, sidebar, children }) {
+  return (
+    <div className="layout">
+      <header>{header}</header>
+      <aside>{sidebar}</aside>
+      <main>{children}</main>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Layout
+      header={<NavBar />}
+      sidebar={<SideMenu />}
+    >
+      <ArticleContent />
+    </Layout>
+  );
+}
+```
+
+## 純元件概念
+
+React 元件應該像**純函式**一樣運作：相同的 props 輸入，產生相同的輸出。
+
+```jsx
+// ✅ 純元件 — 相同 props 總是回傳相同結果
+function PriceTag({ price, currency }) {
+  const formatted = new Intl.NumberFormat('zh-TW', {
+    style: 'currency',
+    currency
+  }).format(price);
+
+  return <span className="price">{formatted}</span>;
+}
+
+// ❌ 不純元件 — 結果依賴外部可變狀態
+let requestCount = 0;
+
+function RequestCounter() {
+  requestCount += 1; // 副作用！修改外部變數
+  return <p>請求次數：{requestCount}</p>;
+}
+```
+
+### React.memo 效能最佳化
+
+`React.memo` 是一個高階元件，會記住上一次的 props，如果 props 沒有變化就跳過重新渲染：
+
+```jsx
+const ExpensiveList = React.memo(function ExpensiveList({ items }) {
+  console.log('ExpensiveList rendered');
+  return (
+    <ul>
+      {items.map(item => (
+        <li key={item.id}>{item.name}</li>
+      ))}
+    </ul>
+  );
+});
+
+// 只有當 items 真正改變時才會重新渲染
+```
+
+## Props 傳遞與 Children 組合互動範例
+
+<CodePlayground
+  title="Props 與 Children 組合範例"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: sans-serif; padding: 16px; background: #f5f5f5; }
+.card { background: white; border-radius: 8px; padding: 16px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.card-header { font-size: 18px; font-weight: bold; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 2px solid #eee; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 8px; }
+.badge-admin { background: #dc3545; color: white; }
+.badge-user { background: #007bff; color: white; }
+.badge-guest { background: #6c757d; color: white; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; background: #007bff; color: white; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 12px; }
+.user-row { display: flex; align-items: center; margin: 6px 0; }
+.controls { margin-bottom: 12px; }
+.controls button { margin: 0 4px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; background: white; }
+.controls button:hover { background: #e9ecef; }`}
+  defaultJS={`const { useState } = React;
+var e = React.createElement;
+
+function Badge(props) {
+  return e('span', { className: 'badge badge-' + props.role }, props.role);
+}
+
+function Avatar(props) {
+  return e('span', { className: 'avatar' }, props.name.charAt(0));
+}
+
+function Card(props) {
+  return e('div', { className: 'card' },
+    e('div', { className: 'card-header' }, props.title),
+    e('div', { className: 'card-body' }, props.children)
+  );
+}
+
+function UserRow(props) {
+  var user = props.user;
+  return e('div', { className: 'user-row' },
+    e(Avatar, { name: user.name }),
+    e('span', null, user.name),
+    e(Badge, { role: user.role }),
+    props.children
+  );
+}
+
+function App() {
+  var allUsers = [
+    { id: 1, name: '小明', role: 'admin' },
+    { id: 2, name: '小華', role: 'user' },
+    { id: 3, name: '小美', role: 'user' },
+    { id: 4, name: '訪客A', role: 'guest' },
+    { id: 5, name: '訪客B', role: 'guest' }
+  ];
+
+  var filters = ['all', 'admin', 'user', 'guest'];
+  var labels = { all: '全部', admin: '管理員', user: '使用者', guest: '訪客' };
+  var state = useState('all');
+  var filter = state[0];
+  var setFilter = state[1];
+
+  var filtered = filter === 'all' ? allUsers : allUsers.filter(function(u) {
+    return u.role === filter;
+  });
+
+  return e('div', null,
+    e('h2', null, '使用者列表'),
+    e('div', { className: 'controls' },
+      filters.map(function(f) {
+        return e('button', {
+          key: f,
+          onClick: function() { setFilter(f); },
+          style: { fontWeight: filter === f ? 'bold' : 'normal' }
+        }, labels[f] + ' (' + (f === 'all' ? allUsers.length : allUsers.filter(function(u) { return u.role === f; }).length) + ')');
+      })
+    ),
+    e(Card, { title: '成員列表（' + filtered.length + ' 人）' },
+      filtered.length === 0
+        ? e('p', { style: { color: '#888' } }, '沒有符合的成員')
+        : filtered.map(function(user) {
+            return e(UserRow, { key: user.id, user: user });
+          })
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(e(App));`}
+  dependencies={["react"]}
+/>
+
+## 面試重點整理
+
+1. **Props 和 State 的差別？** — Props 是從父元件傳入的唯讀資料，元件不能修改自己的 props；State 是元件內部的可變資料，由元件自身管理。
+
+2. **為什麼 React 推薦組合而非繼承？** — 組合更靈活，透過 props 和 children 可以達成任何複用需求。React 團隊表示在 Facebook 數千個元件中，沒有找到需要繼承的案例。
+
+3. **什麼是單向資料流？** — 資料只能從父元件透過 props 向下傳遞給子元件，子元件不能直接修改父元件的資料，只能透過回呼函式向上通知變更。
+
+4. **children prop 是什麼？** — 元件標籤之間的內容會自動成為 `children` prop，可以是文字、元素、陣列甚至函式。
+
+5. **React.memo 的作用？** — 記憶化元件，當 props 沒有變化時跳過重新渲染，是效能最佳化手段。注意它使用淺比較（shallow comparison）。
+
+6. **PropTypes vs TypeScript？** — PropTypes 是執行時檢查，TypeScript 是編譯時檢查。現代專案幾乎都使用 TypeScript，提供更全面的型別安全。
+
+7. **什麼是純元件？** — 行為如純函式的元件，相同 props 總是回傳相同輸出，不產生副作用，不修改外部變數。
+
+---
+
+下一篇我們將進入 **State 與生命週期** — 學習如何使用 useState 管理元件狀態、理解批次更新機制，以及不可變更新原則。

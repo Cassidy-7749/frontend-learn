@@ -1,0 +1,468 @@
+# 復原與修正操作
+
+開發過程中難免會犯錯——提交了錯誤的程式碼、不小心刪除了檔案、或是想要撤銷某次修改。Git 提供了豐富的復原工具，理解這些工具的差異與適用場景，能讓你在任何情況下都能從容應對。
+
+## Git 的三個區域
+
+在學習復原操作之前，必須先理解 Git 的三個核心區域，因為不同的復原指令影響的區域不同：
+
+1. **Working Directory（工作目錄）**：你實際編輯的檔案
+2. **Staging Area / Index（暫存區）**：`git add` 後暫存的變更
+3. **Repository（倉庫）**：`git commit` 後永久保存的歷史
+
+```
+工作目錄 ──git add──→ 暫存區 ──git commit──→ 倉庫
+   ↑                    ↑                      ↑
+   ↑←── git checkout -- ↑←── git reset HEAD   ↑
+   ↑←──────── git reset --hard ───────────────↑
+```
+
+## git reset — 重置到指定提交
+
+`git reset` 是最常用的復原指令之一，它將 HEAD（目前分支的指標）移動到指定的提交。根據參數不同，它對三個區域的影響也不同。
+
+### --soft 模式
+
+```bash
+git reset --soft HEAD~1
+```
+
+- 移動 HEAD 指標到上一個提交
+- 暫存區**不變**（之前的提交內容會保留在暫存區）
+- 工作目錄**不變**
+
+用途：想要修改最後一次提交的內容，但保留所有變更。
+
+```bash
+# 場景：想要把最後兩個提交合併成一個
+git reset --soft HEAD~2
+git commit -m "feat: combined changes"
+```
+
+### --mixed 模式（預設）
+
+```bash
+git reset HEAD~1
+# 等同於
+git reset --mixed HEAD~1
+```
+
+- 移動 HEAD 指標到上一個提交
+- 暫存區**被重置**（變更回到「未暫存」狀態）
+- 工作目錄**不變**
+
+用途：想要重新選擇要暫存哪些檔案。
+
+```bash
+# 場景：不小心 git add 了不該加的檔案
+git reset HEAD unwanted-file.js
+# 檔案回到未暫存狀態，但內容保留
+```
+
+### --hard 模式
+
+```bash
+git reset --hard HEAD~1
+```
+
+- 移動 HEAD 指標到上一個提交
+- 暫存區**被重置**
+- 工作目錄**被重置**（所有變更被丟棄！）
+
+<Callout type="warning" title="--hard 是破壞性操作">
+`git reset --hard` 會永久丟棄工作目錄中的變更。未提交的修改將無法恢復。在使用前請確認你不需要這些變更，或已經做好備份。如果不小心執行了，可以嘗試用 `git reflog` 救回已提交的部分。
+</Callout>
+
+### 三種模式比較
+
+| 模式 | HEAD | 暫存區 | 工作目錄 | 安全性 |
+|------|------|--------|----------|--------|
+| --soft | 移動 | 不變 | 不變 | 安全 |
+| --mixed（預設） | 移動 | 重置 | 不變 | 安全 |
+| --hard | 移動 | 重置 | 重置 | 危險 |
+
+## git revert — 安全地撤銷提交
+
+`git revert` 與 `reset` 不同，它不會修改歷史，而是建立一個**新的提交**來抵消指定提交的變更：
+
+```bash
+# 撤銷最近一次提交
+git revert HEAD
+
+# 撤銷指定提交
+git revert a1b2c3d
+
+# 撤銷多個連續提交
+git revert HEAD~3..HEAD
+
+# 不自動建立提交（先暫存，稍後再提交）
+git revert --no-commit HEAD
+```
+
+### reset vs revert
+
+| 特性 | git reset | git revert |
+|------|-----------|------------|
+| 修改歷史 | 是 | 否（建立新提交） |
+| 適合公共分支 | 否 | 是 |
+| 適合私有分支 | 是 | 是 |
+| 協作安全性 | 低 | 高 |
+
+**原則**：已經推送到遠端的提交，使用 `revert`；只在本地的提交，可以使用 `reset`。
+
+## git stash — 暫存工作進度
+
+`git stash` 可以將目前的未提交變更暫時儲存起來，讓你切換到乾淨的工作狀態，稍後再恢復。
+
+### 基本用法
+
+```bash
+# 暫存目前變更
+git stash
+
+# 帶訊息的暫存（方便辨識）
+git stash save "正在做的登入功能"
+# 或較新語法
+git stash push -m "正在做的登入功能"
+
+# 包含未追蹤的檔案
+git stash -u
+# 或
+git stash --include-untracked
+```
+
+### 恢復暫存
+
+```bash
+# 恢復最近一次暫存並從列表移除
+git stash pop
+
+# 恢復最近一次暫存但保留在列表中
+git stash apply
+
+# 恢復指定的暫存
+git stash apply stash@{2}
+```
+
+### 管理暫存列表
+
+```bash
+# 列出所有暫存
+git stash list
+# stash@{0}: On feature/login: 正在做的登入功能
+# stash@{1}: WIP on main: a1b2c3d Update README
+
+# 查看暫存的差異內容
+git stash show stash@{0}
+git stash show -p stash@{0}  # 詳細差異
+
+# 刪除指定暫存
+git stash drop stash@{1}
+
+# 清除所有暫存
+git stash clear
+```
+
+### 從暫存建立分支
+
+```bash
+# 從暫存內容建立新分支（避免恢復時的衝突）
+git stash branch feature/from-stash stash@{0}
+```
+
+<Callout type="tip" title="stash 的實用場景">
+最常見的 stash 使用場景：你正在功能分支上開發，突然需要切到 main 修復一個緊急 bug。先 `git stash` 保存進度，修完 bug 後切回來 `git stash pop` 繼續工作。
+</Callout>
+
+## git reflog — 救回遺失的提交
+
+`git reflog` 記錄了 HEAD 的所有移動歷史，即使你用 `reset --hard` 移除了提交，reflog 仍然保留著參考。它是你的「時光機」。
+
+### 查看 reflog
+
+```bash
+git reflog
+# a1b2c3d HEAD@{0}: reset: moving to HEAD~2
+# e4f5g6h HEAD@{1}: commit: feat: add search
+# i7j8k9l HEAD@{2}: commit: feat: add login
+# m0n1o2p HEAD@{3}: commit (initial): initial commit
+```
+
+### 救回遺失的提交
+
+```bash
+# 場景：不小心 reset --hard 移除了提交
+git reset --hard HEAD~2  # 糟糕！刪掉了兩個提交
+
+# 用 reflog 找到遺失的提交
+git reflog
+# 找到想要恢復的提交 hash
+
+# 方法 1：reset 回到那個提交
+git reset --hard e4f5g6h
+
+# 方法 2：建立新分支保存那些提交
+git branch recovery-branch e4f5g6h
+```
+
+### reflog 的時間過濾
+
+```bash
+# 查看過去 2 小時內的操作
+git reflog --since="2 hours ago"
+
+# 查看特定分支的 reflog
+git reflog show feature/login
+```
+
+注意：reflog 預設保留 90 天，過期後才會被垃圾回收清除。
+
+## git checkout -- 還原檔案
+
+`git checkout --` 可以將工作目錄中的檔案恢復到上次提交的狀態：
+
+```bash
+# 還原單一檔案（丟棄工作目錄中的修改）
+git checkout -- index.js
+
+# 還原整個目錄
+git checkout -- src/
+
+# 從特定提交還原檔案
+git checkout a1b2c3d -- index.js
+```
+
+在較新版本的 Git（2.23+）中，推薦使用更語意化的 `git restore`：
+
+```bash
+# 還原工作目錄中的檔案（等同 checkout --）
+git restore index.js
+
+# 取消暫存（等同 reset HEAD）
+git restore --staged index.js
+
+# 同時取消暫存和還原檔案
+git restore --staged --worktree index.js
+
+# 從特定提交還原
+git restore --source=a1b2c3d index.js
+```
+
+## git clean — 清除未追蹤檔案
+
+`git clean` 用於刪除工作目錄中未被 Git 追蹤的檔案：
+
+```bash
+# 預覽會被刪除的檔案（乾跑模式）
+git clean -n
+
+# 強制刪除未追蹤的檔案
+git clean -f
+
+# 刪除未追蹤的檔案和目錄
+git clean -fd
+
+# 連 .gitignore 中列出的檔案也一起刪除
+git clean -fdx
+
+# 互動模式逐一確認
+git clean -i
+```
+
+<Callout type="warning" title="clean 前務必先預覽">
+`git clean -f` 是不可逆的操作。建議每次都先用 `git clean -n`（dry run）預覽會刪除哪些檔案，確認無誤後再加上 `-f` 執行。特別小心 `-x` 參數會刪除被 gitignore 的檔案（如 node_modules、build 產物等）。
+</Callout>
+
+## 修改最後一次提交（--amend）
+
+`git commit --amend` 可以修改最近一次提交，包括訊息和內容：
+
+### 只修改提交訊息
+
+```bash
+git commit --amend -m "feat: 修正後的提交訊息"
+```
+
+### 追加檔案到最後一次提交
+
+```bash
+# 忘了加一個檔案
+git add forgotten-file.js
+git commit --amend --no-edit
+# --no-edit 表示不修改提交訊息
+```
+
+### 修改提交的作者
+
+```bash
+git commit --amend --author="Name <email@example.com>"
+```
+
+注意：`--amend` 實際上是建立一個新的提交替換舊的。如果已經推送到遠端，修改後需要 `force push`，因此只在未推送的提交上使用。
+
+## 互動範例
+
+<CodePlayground
+  title="模擬 reset 三種模式對三個區域的影響"
+  defaultJS={`// 模擬 Git 的三個區域與 reset 操作
+class GitSimulator {
+  constructor() {
+    this.workingDir = {};
+    this.stagingArea = {};
+    this.repository = [];
+    this.head = -1;
+    this.reflog = [];
+  }
+
+  // 模擬編輯檔案
+  editFile(name, content) {
+    this.workingDir[name] = content;
+    console.log('  [工作目錄] 編輯 ' + name + ' → "' + content + '"');
+  }
+
+  // 模擬 git add
+  add(name) {
+    if (this.workingDir[name] !== undefined) {
+      this.stagingArea[name] = this.workingDir[name];
+      console.log('  [暫存區] 加入 ' + name);
+    }
+  }
+
+  // 模擬 git commit
+  commit(message) {
+    const snapshot = { ...this.stagingArea };
+    this.head++;
+    this.repository.push({ id: this.head, message, snapshot });
+    this.reflog.push({ action: 'commit', head: this.head, message });
+    console.log('  [倉庫] 提交 #' + this.head + ': ' + message);
+  }
+
+  // 模擬 git reset
+  reset(mode, targetHead) {
+    const oldHead = this.head;
+    const target = this.repository[targetHead];
+
+    console.log('\\n  git reset --' + mode + ' HEAD~' + (oldHead - targetHead));
+    console.log('  HEAD: #' + oldHead + ' → #' + targetHead);
+
+    this.head = targetHead;
+    this.reflog.push({ action: 'reset --' + mode, head: targetHead });
+
+    if (mode === 'soft') {
+      console.log('  暫存區: 保持不變 ✓');
+      console.log('  工作目錄: 保持不變 ✓');
+    } else if (mode === 'mixed') {
+      this.stagingArea = { ...target.snapshot };
+      console.log('  暫存區: 已重置為提交 #' + targetHead + ' 的狀態');
+      console.log('  工作目錄: 保持不變 ✓');
+    } else if (mode === 'hard') {
+      this.stagingArea = { ...target.snapshot };
+      this.workingDir = { ...target.snapshot };
+      console.log('  暫存區: 已重置為提交 #' + targetHead + ' 的狀態');
+      console.log('  工作目錄: 已重置為提交 #' + targetHead + ' 的狀態 ⚠️');
+    }
+  }
+
+  showState(label) {
+    console.log('\\n--- ' + label + ' ---');
+    console.log('  HEAD → 提交 #' + this.head);
+    console.log('  工作目錄: ' + JSON.stringify(this.workingDir));
+    console.log('  暫存區:   ' + JSON.stringify(this.stagingArea));
+    const commits = this.repository.slice(0, this.head + 1);
+    console.log('  提交歷史: ' + commits.map(c => '#' + c.id + ' ' + c.message).join(' → '));
+  }
+}
+
+// === 模擬 --soft ===
+console.log('========== --soft 模式 ==========');
+let git = new GitSimulator();
+git.editFile('app.js', 'v1');
+git.add('app.js');
+git.commit('初始版本');
+
+git.editFile('app.js', 'v2');
+git.add('app.js');
+git.commit('新增功能 A');
+
+git.editFile('app.js', 'v3');
+git.add('app.js');
+git.commit('新增功能 B');
+
+git.showState('reset 前');
+git.reset('soft', 1);
+git.showState('reset --soft 後');
+console.log('  → 暫存區仍有 v3，可以重新提交');
+
+// === 模擬 --mixed ===
+console.log('\\n\\n========== --mixed 模式（預設）==========');
+git = new GitSimulator();
+git.editFile('app.js', 'v1');
+git.add('app.js');
+git.commit('初始版本');
+
+git.editFile('app.js', 'v2');
+git.add('app.js');
+git.commit('新增功能 A');
+
+git.editFile('app.js', 'v3');
+git.add('app.js');
+git.commit('新增功能 B');
+
+git.showState('reset 前');
+git.reset('mixed', 1);
+git.showState('reset --mixed 後');
+console.log('  → 工作目錄有 v3 但未暫存，需要重新 add');
+
+// === 模擬 --hard ===
+console.log('\\n\\n========== --hard 模式 ==========');
+git = new GitSimulator();
+git.editFile('app.js', 'v1');
+git.add('app.js');
+git.commit('初始版本');
+
+git.editFile('app.js', 'v2');
+git.add('app.js');
+git.commit('新增功能 A');
+
+git.editFile('app.js', 'v3');
+git.add('app.js');
+git.commit('新增功能 B');
+
+git.showState('reset 前');
+git.reset('hard', 1);
+git.showState('reset --hard 後');
+console.log('  → 所有區域都回到提交 #1，v3 的變更完全消失！');
+
+console.log('\\n\\n========== 用 reflog 救回 ==========');
+console.log('  git reflog:');
+git.reflog.forEach((entry, i) => {
+  console.log('    HEAD@{' + i + '}: ' + entry.action + ' → HEAD #' + entry.head);
+});
+console.log('  → 即使 --hard 也能透過 reflog 找到之前的提交！');`}
+/>
+
+## 復原指令速查表
+
+| 場景 | 指令 |
+|------|------|
+| 取消暫存檔案 | `git restore --staged <file>` |
+| 還原工作目錄的修改 | `git restore <file>` |
+| 撤銷最後一次提交（保留變更） | `git reset --soft HEAD~1` |
+| 撤銷最後一次提交（取消暫存） | `git reset HEAD~1` |
+| 完全丟棄最後一次提交 | `git reset --hard HEAD~1` |
+| 安全撤銷已推送的提交 | `git revert <commit>` |
+| 修改最後一次提交訊息 | `git commit --amend -m "new message"` |
+| 暫存目前工作 | `git stash` |
+| 恢復暫存的工作 | `git stash pop` |
+| 清除未追蹤檔案 | `git clean -fd` |
+| 找回遺失的提交 | `git reflog` + `git reset` |
+
+## 面試重點整理
+
+1. **reset 三種模式**：`--soft` 只移動 HEAD、`--mixed`（預設）重置暫存區、`--hard` 重置所有區域；只有 `--hard` 是破壞性的
+2. **reset vs revert**：`reset` 修改歷史適合本地、`revert` 建立新提交適合公共分支
+3. **reflog 救援**：即使 `reset --hard` 也能用 `reflog` 找回，預設保留 90 天
+4. **stash 用途**：臨時保存未提交的工作，常用於緊急切換分支的場景
+5. **--amend 注意事項**：本質上是建立新提交，已推送的提交不要 amend
+
+下一篇我們將探索 Git 的進階技巧，包括 cherry-pick、interactive rebase、bisect 等強大工具，讓你的 Git 功力更上一層樓。

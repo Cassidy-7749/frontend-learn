@@ -1,0 +1,507 @@
+# 內建工具型別
+
+TypeScript 內建了許多實用的工具型別（Utility Types），它們能幫助我們快速地從現有型別衍生出新型別，避免重複定義。掌握這些工具型別是提升 TypeScript 開發效率的關鍵。
+
+## Partial&lt;T&gt; 與 Required&lt;T&gt;
+
+`Partial<T>` 將所有屬性變為可選，`Required<T>` 則將所有屬性變為必填：
+
+```ts
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  avatar?: string;
+}
+
+// Partial<User> 等同於：
+// { id?: number; name?: string; email?: string; avatar?: string }
+type PartialUser = Partial<User>;
+
+// 常用於更新操作——只需傳入要修改的欄位
+function updateUser(id: number, updates: Partial<User>): void {
+  // 只更新傳入的欄位
+  console.log(`更新使用者 ${id}:`, updates);
+}
+
+updateUser(1, { name: 'Alice' });       // OK，只更新名字
+updateUser(1, { email: 'a@b.com' });    // OK，只更新信箱
+
+// Required<User> 等同於：
+// { id: number; name: string; email: string; avatar: string }
+type CompleteUser = Required<User>;
+
+// avatar 不再是可選的
+const complete: CompleteUser = {
+  id: 1,
+  name: 'Alice',
+  email: 'alice@example.com',
+  avatar: '/img/alice.png', // 必填！
+};
+```
+
+## Pick&lt;T, K&gt; 與 Omit&lt;T, K&gt;
+
+`Pick` 從型別中挑選特定屬性，`Omit` 則排除特定屬性：
+
+```ts
+interface Article {
+  id: number;
+  title: string;
+  content: string;
+  author: string;
+  createdAt: Date;
+  updatedAt: Date;
+  tags: string[];
+}
+
+// 只挑選需要的屬性
+type ArticlePreview = Pick<Article, 'id' | 'title' | 'author'>;
+// { id: number; title: string; author: string }
+
+// 排除不需要的屬性
+type ArticleInput = Omit<Article, 'id' | 'createdAt' | 'updatedAt'>;
+// { title: string; content: string; author: string; tags: string[] }
+
+// 實際應用：API 層級的型別設計
+type CreateArticleDto = Omit<Article, 'id' | 'createdAt' | 'updatedAt'>;
+type UpdateArticleDto = Partial<Omit<Article, 'id' | 'createdAt'>>;
+type ArticleListItem = Pick<Article, 'id' | 'title' | 'author' | 'createdAt'>;
+```
+
+<Callout type="tip" title="Pick vs Omit 的選擇">
+當你需要的屬性少於排除的屬性時，用 `Pick`；反之用 `Omit`。例如一個有 10 個屬性的型別，只需要 2 個用 `Pick`，需要 8 個用 `Omit`。
+</Callout>
+
+## Record&lt;K, T&gt;
+
+`Record` 建立一個鍵為 `K`、值為 `T` 的物件型別：
+
+```ts
+// 基本用法
+type Fruit = 'apple' | 'banana' | 'cherry';
+type FruitPrices = Record<Fruit, number>;
+
+const prices: FruitPrices = {
+  apple: 30,
+  banana: 15,
+  cherry: 80,
+}; // 必須包含所有 Fruit 鍵
+
+// 動態鍵名
+type UserRoles = Record<string, string[]>;
+const roles: UserRoles = {
+  admin: ['read', 'write', 'delete'],
+  editor: ['read', 'write'],
+  viewer: ['read'],
+};
+
+// 搭配其他工具型別
+interface Permission {
+  read: boolean;
+  write: boolean;
+  delete: boolean;
+}
+
+type RolePermissions = Record<'admin' | 'editor' | 'viewer', Permission>;
+
+const permissions: RolePermissions = {
+  admin: { read: true, write: true, delete: true },
+  editor: { read: true, write: true, delete: false },
+  viewer: { read: true, write: false, delete: false },
+};
+```
+
+## Readonly&lt;T&gt; 與 ReadonlyArray&lt;T&gt;
+
+`Readonly<T>` 讓所有屬性變為唯讀，`ReadonlyArray<T>` 建立不可變陣列：
+
+```ts
+interface Config {
+  host: string;
+  port: number;
+  debug: boolean;
+}
+
+const config: Readonly<Config> = {
+  host: 'localhost',
+  port: 3000,
+  debug: true,
+};
+
+// config.port = 8080; // 錯誤！Cannot assign to 'port' because it is a read-only property
+
+// ReadonlyArray 禁止所有修改方法
+const numbers: ReadonlyArray<number> = [1, 2, 3, 4, 5];
+// numbers.push(6);    // 錯誤！
+// numbers[0] = 10;    // 錯誤！
+
+// 簡寫語法
+const items: readonly number[] = [1, 2, 3];
+
+// 函式參數使用 readonly 防止意外修改
+function sum(numbers: readonly number[]): number {
+  // numbers.sort(); // 錯誤！不能在 readonly 陣列上呼叫 sort
+  return numbers.reduce((a, b) => a + b, 0);
+}
+```
+
+<Callout type="warning" title="Readonly 是淺層的">
+`Readonly<T>` 只作用於第一層屬性。巢狀物件的屬性仍然可以修改。若需要深層唯讀，需要自行實作遞迴的 `DeepReadonly` 型別。
+</Callout>
+
+## Exclude&lt;T, U&gt; 與 Extract&lt;T, U&gt;
+
+`Exclude` 從聯合型別中排除某些成員，`Extract` 則提取符合條件的成員：
+
+```ts
+type Status = 'pending' | 'active' | 'inactive' | 'deleted';
+
+// 排除 'deleted'
+type VisibleStatus = Exclude<Status, 'deleted'>;
+// 'pending' | 'active' | 'inactive'
+
+// 只保留活躍狀態
+type ActiveStatus = Extract<Status, 'active' | 'pending'>;
+// 'active' | 'pending'
+
+// 更複雜的範例
+type AllEvents =
+  | { type: 'click'; x: number; y: number }
+  | { type: 'scroll'; offset: number }
+  | { type: 'keypress'; key: string }
+  | { type: 'focus' };
+
+// 提取帶有額外資料的事件
+type EventWithData = Extract<AllEvents, { type: string; [key: string]: unknown }>;
+
+// 從型別中排除 null 和 undefined
+type MaybeString = string | null | undefined;
+type DefiniteString = Exclude<MaybeString, null | undefined>;
+// string
+```
+
+## NonNullable&lt;T&gt;
+
+`NonNullable<T>` 移除型別中的 `null` 和 `undefined`：
+
+```ts
+type MaybeUser = User | null | undefined;
+type DefiniteUser = NonNullable<MaybeUser>;
+// User
+
+// 常見應用場景
+function processValue<T>(value: T): NonNullable<T> {
+  if (value === null || value === undefined) {
+    throw new Error('值不能為 null 或 undefined');
+  }
+  return value as NonNullable<T>;
+}
+
+// 搭配陣列過濾
+const mixedArray: (string | null | undefined)[] = [
+  'hello', null, 'world', undefined, 'TypeScript'
+];
+
+const cleanArray: string[] = mixedArray.filter(
+  (item): item is string => item != null
+);
+```
+
+## ReturnType&lt;T&gt; 與 Parameters&lt;T&gt;
+
+`ReturnType` 取得函式的回傳型別，`Parameters` 取得參數型別的元組：
+
+```ts
+function createUser(name: string, age: number, email: string) {
+  return {
+    id: Math.random(),
+    name,
+    age,
+    email,
+    createdAt: new Date(),
+  };
+}
+
+// 自動取得回傳型別，不需手動定義
+type CreatedUser = ReturnType<typeof createUser>;
+// { id: number; name: string; age: number; email: string; createdAt: Date }
+
+// 取得參數型別
+type CreateUserParams = Parameters<typeof createUser>;
+// [string, number, string]
+
+// 實際應用：包裝函式
+function withLogging<T extends (...args: any[]) => any>(
+  fn: T
+): (...args: Parameters<T>) => ReturnType<T> {
+  return (...args: Parameters<T>): ReturnType<T> => {
+    console.log('呼叫函式，參數:', args);
+    const result = fn(...args);
+    console.log('回傳結果:', result);
+    return result;
+  };
+}
+
+const loggedCreateUser = withLogging(createUser);
+// 完整保留原函式的型別資訊
+```
+
+## InstanceType&lt;T&gt;
+
+`InstanceType` 取得建構函式（類別）的實例型別：
+
+```ts
+class Database {
+  host: string;
+  port: number;
+
+  constructor(host: string, port: number) {
+    this.host = host;
+    this.port = port;
+  }
+
+  connect(): void {
+    console.log(`連接到 ${this.host}:${this.port}`);
+  }
+}
+
+type DbInstance = InstanceType<typeof Database>;
+// Database（等同於 Database 類別的實例型別）
+
+// 工廠模式中特別有用
+function createInstance<T extends new (...args: any[]) => any>(
+  Constructor: T,
+  ...args: ConstructorParameters<T>
+): InstanceType<T> {
+  return new Constructor(...args);
+}
+
+const db = createInstance(Database, 'localhost', 5432);
+// db 的型別為 Database
+db.connect();
+```
+
+## Awaited&lt;T&gt;
+
+`Awaited<T>`（TypeScript 4.5+）遞迴解開 Promise 型別：
+
+```ts
+type A = Awaited<Promise<string>>;
+// string
+
+type B = Awaited<Promise<Promise<number>>>;
+// number（遞迴解開）
+
+type C = Awaited<boolean | Promise<string>>;
+// boolean | string
+
+// 實際應用
+async function fetchUserData() {
+  const response = await fetch('/api/user');
+  return response.json() as Promise<User>;
+}
+
+type UserData = Awaited<ReturnType<typeof fetchUserData>>;
+// User
+
+// 搭配 Promise.all
+async function loadDashboard() {
+  const [users, articles] = await Promise.all([
+    fetchUsers(),
+    fetchArticles(),
+  ]);
+  return { users, articles };
+}
+
+type DashboardData = Awaited<ReturnType<typeof loadDashboard>>;
+```
+
+## 工具型別組合使用
+
+真正的威力在於將多個工具型別組合運用：
+
+```ts
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  description: string;
+  category: string;
+  stock: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// 建立 DTO：排除自動生成欄位，部分欄位可選
+type CreateProductDto = Omit<Product, 'id' | 'createdAt' | 'updatedAt'>;
+
+// 更新 DTO：所有可修改欄位都可選
+type UpdateProductDto = Partial<Pick<Product, 'name' | 'price' | 'description' | 'stock'>>;
+
+// 列表項目：只需摘要資訊
+type ProductListItem = Pick<Product, 'id' | 'name' | 'price' | 'category'>;
+
+// 搜尋條件：所有欄位可選，排除時間戳
+type ProductFilter = Partial<Omit<Product, 'createdAt' | 'updatedAt'>>;
+
+// 唯讀版本用於展示
+type ProductDisplay = Readonly<Pick<Product, 'id' | 'name' | 'price' | 'description'>>;
+
+// 分類對應的產品清單
+type CategoryProducts = Record<string, ProductListItem[]>;
+```
+
+<CodePlayground
+  title="工具型別對應的 JS 物件操作"
+  defaultJS={`// === 用 JS 展示工具型別的對應操作 ===
+
+const product = {
+  id: 1,
+  name: '筆電',
+  price: 35000,
+  description: '高效能筆記型電腦',
+  category: '電子產品',
+  stock: 50,
+};
+
+// Pick<T, K> → 挑選特定屬性
+function pick(obj, keys) {
+  const result = {};
+  keys.forEach(key => { result[key] = obj[key]; });
+  return result;
+}
+console.log('Pick:', pick(product, ['id', 'name', 'price']));
+
+// Omit<T, K> → 排除特定屬性
+function omit(obj, keys) {
+  const result = { ...obj };
+  keys.forEach(key => { delete result[key]; });
+  return result;
+}
+console.log('Omit:', omit(product, ['id', 'stock']));
+console.log('---');
+
+// Partial<T> → 模擬部分更新
+function updateProduct(original, updates) {
+  return { ...original, ...updates };
+}
+const updated = updateProduct(product, { price: 32000 });
+console.log('Partial update:', updated);
+console.log('---');
+
+// Record<K, T> → 建立鍵值對應
+const categoryProducts = {};
+const items = [
+  { name: '筆電', category: '電子' },
+  { name: '手機', category: '電子' },
+  { name: '桌子', category: '家具' },
+];
+items.forEach(item => {
+  if (!categoryProducts[item.category]) {
+    categoryProducts[item.category] = [];
+  }
+  categoryProducts[item.category].push(item.name);
+});
+console.log('Record:', JSON.stringify(categoryProducts));
+console.log('---');
+
+// Readonly<T> → Object.freeze
+const config = Object.freeze({
+  host: 'localhost',
+  port: 3000,
+});
+try {
+  config.port = 8080;
+} catch (e) {
+  console.log('Readonly 效果: 無法修改凍結的屬性');
+}
+console.log('Frozen config:', config);
+console.log('---');
+
+// Exclude → Array.filter 概念
+const statuses = ['pending', 'active', 'inactive', 'deleted'];
+const visible = statuses.filter(s => s !== 'deleted');
+console.log('Exclude:', visible);
+
+// NonNullable → 過濾 null/undefined
+const mixed = ['hello', null, 'world', undefined, 'TS'];
+const clean = mixed.filter(x => x != null);
+console.log('NonNullable:', clean);`}
+/>
+
+## 手動實作工具型別
+
+理解工具型別的實作原理，能幫助我們撰寫自訂工具型別：
+
+```ts
+// Partial 的實作
+type MyPartial<T> = {
+  [P in keyof T]?: T[P];
+};
+
+// Required 的實作
+type MyRequired<T> = {
+  [P in keyof T]-?: T[P]; // -? 移除可選修飾符
+};
+
+// Readonly 的實作
+type MyReadonly<T> = {
+  readonly [P in keyof T]: T[P];
+};
+
+// Pick 的實作
+type MyPick<T, K extends keyof T> = {
+  [P in K]: T[P];
+};
+
+// Omit 的實作
+type MyOmit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+
+// Record 的實作
+type MyRecord<K extends keyof any, T> = {
+  [P in K]: T;
+};
+
+// Exclude 的實作（條件型別分配）
+type MyExclude<T, U> = T extends U ? never : T;
+
+// Extract 的實作
+type MyExtract<T, U> = T extends U ? T : never;
+
+// NonNullable 的實作
+type MyNonNullable<T> = T extends null | undefined ? never : T;
+
+// ReturnType 的實作
+type MyReturnType<T extends (...args: any) => any> =
+  T extends (...args: any) => infer R ? R : any;
+
+// Parameters 的實作
+type MyParameters<T extends (...args: any) => any> =
+  T extends (...args: infer P) => any ? P : never;
+
+// DeepReadonly（遞迴版本）
+type DeepReadonly<T> = {
+  readonly [P in keyof T]: T[P] extends object
+    ? T[P] extends Function
+      ? T[P]
+      : DeepReadonly<T[P]>
+    : T[P];
+};
+```
+
+<Callout type="info" title="infer 關鍵字">
+`infer` 是條件型別中的推斷工具，讓我們在型別匹配時「捕獲」某個位置的型別。`ReturnType` 和 `Parameters` 的實作都依賴 `infer`。我們將在進階型別操作一章更深入地探討它。
+</Callout>
+
+## 面試重點整理
+
+1. **Partial vs Required** `Partial` 讓所有屬性可選（適用於更新操作），`Required` 讓所有屬性必填
+2. **Pick vs Omit** `Pick` 挑選屬性子集，`Omit` 排除屬性；選擇哪個取決於需要的屬性數量
+3. **Record 的用途** 建立鍵值對應的物件型別，常用於字典、映射表等結構
+4. **Readonly 是淺層的** 只影響第一層屬性，巢狀物件仍可修改
+5. **ReturnType 與 typeof** 搭配使用可以從函式自動推導型別，減少重複定義
+6. **工具型別可以組合** 多個工具型別疊加使用，如 `Partial<Pick<T, K>>`，是實際開發中的常見模式
+7. **手動實作** 理解 Mapped Types 和 Conditional Types 是實作自訂工具型別的基礎
+
+下一篇我們將探討型別收窄與守衛，學習如何讓 TypeScript 在不同的分支中自動推斷出更精確的型別。

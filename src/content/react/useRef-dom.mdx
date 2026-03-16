@@ -1,0 +1,630 @@
+# useRef 與 DOM 操作
+
+React 透過虛擬 DOM 管理 UI 更新，大部分情況下我們不需要直接操作 DOM。然而，某些場景（如管理焦點、測量元素尺寸、整合第三方函式庫）確實需要直接存取 DOM 節點。`useRef` 就是 React 提供的橋梁，讓我們在宣告式的世界中安全地進行命令式操作。
+
+## useRef 基礎
+
+`useRef` 回傳一個可變的 ref 物件，其 `.current` 屬性被初始化為傳入的參數。這個物件在元件的整個生命週期中保持不變。
+
+```jsx
+import { useRef } from 'react';
+
+function MyComponent() {
+  const myRef = useRef(initialValue);
+  // myRef = { current: initialValue }
+  // myRef 物件在每次渲染間保持同一個參考
+}
+```
+
+### useRef 的兩大用途
+
+1. **存取 DOM 元素**：透過 `ref` 屬性附加到 JSX 元素上
+2. **保存可變值**：不觸發重新渲染的「實例變數」
+
+## 保存可變值（不觸發渲染）
+
+與 `useState` 不同，修改 `ref.current` 不會觸發重新渲染。這使得 `useRef` 非常適合保存那些需要跨渲染保持、但變化時不需要更新 UI 的值。
+
+```jsx
+function StopWatch() {
+  const [time, setTime] = useState(0);
+  const [isRunning, setIsRunning] = useState(false);
+  const intervalRef = useRef(null); // 保存 interval ID
+
+  function start() {
+    setIsRunning(true);
+    intervalRef.current = setInterval(() => {
+      setTime(t => t + 10);
+    }, 10);
+  }
+
+  function stop() {
+    setIsRunning(false);
+    clearInterval(intervalRef.current);
+  }
+
+  function reset() {
+    stop();
+    setTime(0);
+  }
+
+  return (
+    <div>
+      <span>{time}ms</span>
+      <button onClick={start} disabled={isRunning}>開始</button>
+      <button onClick={stop} disabled={!isRunning}>停止</button>
+      <button onClick={reset}>重置</button>
+    </div>
+  );
+}
+```
+
+### 常見的可變值儲存場景
+
+```jsx
+// 追蹤前一次的值
+function usePrevious(value) {
+  const ref = useRef();
+  useEffect(() => {
+    ref.current = value;
+  });
+  return ref.current;
+}
+
+// 追蹤元件是否已掛載
+function useIsMounted() {
+  const isMounted = useRef(false);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+  return isMounted;
+}
+
+// 保存最新的 callback（避免過時閉包）
+function useLatestCallback(callback) {
+  const ref = useRef(callback);
+  ref.current = callback;
+  return useCallback((...args) => ref.current(...args), []);
+}
+```
+
+<Callout type="info" title="useRef vs useState">
+選擇使用哪個的關鍵在於：值的變化是否需要反映在 UI 上？如果需要——用 `useState`；如果不需要——用 `useRef`。常見的 `useRef` 場景：timer ID、前一次渲染的值、是否掛載的旗標、第三方函式庫實例等。
+</Callout>
+
+## 存取 DOM 元素
+
+將 ref 透過 `ref` 屬性附加到 JSX 元素上，React 會在元件掛載後將對應的 DOM 節點賦值給 `ref.current`。
+
+```jsx
+function TextInput() {
+  const inputRef = useRef(null);
+
+  function handleClick() {
+    // 直接操作 DOM 元素
+    inputRef.current.focus();
+    inputRef.current.select();
+  }
+
+  return (
+    <div>
+      <input ref={inputRef} type="text" placeholder="點按鈕聚焦" />
+      <button onClick={handleClick}>聚焦輸入框</button>
+    </div>
+  );
+}
+```
+
+### 多個 ref 的管理
+
+```jsx
+function FormFields() {
+  const firstNameRef = useRef(null);
+  const lastNameRef = useRef(null);
+  const emailRef = useRef(null);
+
+  // 按 Enter 跳到下一個欄位
+  function handleKeyDown(nextRef) {
+    return (e) => {
+      if (e.key === 'Enter' && nextRef.current) {
+        nextRef.current.focus();
+      }
+    };
+  }
+
+  return (
+    <form>
+      <input ref={firstNameRef} onKeyDown={handleKeyDown(lastNameRef)} placeholder="名字" />
+      <input ref={lastNameRef} onKeyDown={handleKeyDown(emailRef)} placeholder="姓氏" />
+      <input ref={emailRef} placeholder="Email" />
+    </form>
+  );
+}
+```
+
+### 動態列表的 ref
+
+當你需要對列表中的元素使用 ref 時，不能在迴圈中呼叫 `useRef`（違反 Hook 規則）。解法是使用 ref callback 或 Map：
+
+```jsx
+function ItemList({ items }) {
+  const itemsRef = useRef(new Map());
+
+  function scrollToItem(id) {
+    const node = itemsRef.current.get(id);
+    node?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  return (
+    <ul>
+      {items.map(item => (
+        <li
+          key={item.id}
+          ref={(node) => {
+            if (node) {
+              itemsRef.current.set(item.id, node);
+            } else {
+              itemsRef.current.delete(item.id);
+            }
+          }}
+        >
+          {item.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## forwardRef — 轉發 ref
+
+預設情況下，自訂元件不接受 `ref` 屬性。如果你需要讓父元件存取子元件中的 DOM 節點，需要使用 `forwardRef`。
+
+```jsx
+// React 19 之前：使用 forwardRef
+const FancyInput = forwardRef(function FancyInput(props, ref) {
+  return (
+    <input
+      ref={ref}
+      className="fancy-input"
+      {...props}
+    />
+  );
+});
+
+// React 19：ref 直接作為 props
+function FancyInput({ ref, ...props }) {
+  return (
+    <input
+      ref={ref}
+      className="fancy-input"
+      {...props}
+    />
+  );
+}
+
+// 父元件使用
+function Parent() {
+  const inputRef = useRef(null);
+  return <FancyInput ref={inputRef} placeholder="Fancy!" />;
+}
+```
+
+<Callout type="tip" title="React 19 的 ref 簡化">
+React 19 開始，`ref` 可以直接作為普通的 prop 傳遞，不再需要 `forwardRef` 包裝。這大幅簡化了 ref 轉發的程式碼。但在使用 React 18 或更早版本時，仍然需要 `forwardRef`。
+</Callout>
+
+## useImperativeHandle
+
+`useImperativeHandle` 允許你自訂暴露給父元件的 ref 值，限制父元件能對子元件做的操作：
+
+```jsx
+import { forwardRef, useRef, useImperativeHandle } from 'react';
+
+const VideoPlayer = forwardRef(function VideoPlayer(props, ref) {
+  const videoRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    play() {
+      videoRef.current.play();
+    },
+    pause() {
+      videoRef.current.pause();
+    },
+    seekTo(time) {
+      videoRef.current.currentTime = time;
+    }
+    // 不暴露完整的 DOM 節點，只暴露必要的方法
+  }));
+
+  return <video ref={videoRef} src={props.src} />;
+});
+
+// 父元件
+function App() {
+  const playerRef = useRef(null);
+
+  return (
+    <div>
+      <VideoPlayer ref={playerRef} src="/video.mp4" />
+      <button onClick={() => playerRef.current.play()}>播放</button>
+      <button onClick={() => playerRef.current.pause()}>暫停</button>
+      <button onClick={() => playerRef.current.seekTo(0)}>重播</button>
+    </div>
+  );
+}
+```
+
+這個模式的好處是封裝性——父元件無法直接操作底層 DOM，只能使用你定義的介面。
+
+## DOM 測量
+
+`getBoundingClientRect()` 是最常用的 DOM 測量方法，回傳元素的大小和相對於視窗的位置：
+
+```jsx
+function MeasuredBox() {
+  const boxRef = useRef(null);
+  const [dimensions, setDimensions] = useState(null);
+
+  useEffect(() => {
+    if (boxRef.current) {
+      const rect = boxRef.current.getBoundingClientRect();
+      setDimensions({
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        top: Math.round(rect.top),
+        left: Math.round(rect.left)
+      });
+    }
+  }, []);
+
+  return (
+    <div ref={boxRef} style={{ padding: 20, background: '#f0f0f0' }}>
+      {dimensions && (
+        <p>
+          尺寸：{dimensions.width}x{dimensions.height}，
+          位置：({dimensions.left}, {dimensions.top})
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+### ResizeObserver 監聽尺寸變化
+
+```jsx
+function ResponsiveComponent() {
+  const containerRef = useRef(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width);
+      }
+    });
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef}>
+      容器寬度：{Math.round(width)}px
+      {width > 600 ? ' — 桌面版佈局' : ' — 手機版佈局'}
+    </div>
+  );
+}
+```
+
+## 非受控元件與 Ref
+
+在表單處理中，ref 可以用來實作「非受控元件」，讓 DOM 自己管理表單狀態：
+
+```jsx
+// 受控元件：React 管理值
+function ControlledForm() {
+  const [value, setValue] = useState('');
+  return <input value={value} onChange={e => setValue(e.target.value)} />;
+}
+
+// 非受控元件：DOM 管理值，用 ref 讀取
+function UncontrolledForm() {
+  const inputRef = useRef(null);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    console.log('提交的值：', inputRef.current.value);
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input ref={inputRef} defaultValue="初始值" />
+      <button type="submit">提交</button>
+    </form>
+  );
+}
+```
+
+非受控元件適用於簡單的表單、檔案上傳（`<input type="file">`），或是需要整合非 React 的函式庫時。
+
+## Ref Callback Pattern
+
+除了傳遞 ref 物件，你也可以傳遞一個函式（callback ref）。React 會在掛載時以 DOM 節點呼叫它，卸載時以 `null` 呼叫：
+
+```jsx
+function CallbackRefExample() {
+  const [height, setHeight] = useState(0);
+
+  // 不需要 useRef + useEffect 的組合
+  const measureRef = useCallback((node) => {
+    if (node !== null) {
+      setHeight(node.getBoundingClientRect().height);
+    }
+  }, []);
+
+  return (
+    <div>
+      <div ref={measureRef} style={{ padding: 20, background: '#e0f2fe' }}>
+        <p>這個元素的內容可能會動態變化</p>
+        <p>使用 callback ref 可以在掛載時立即測量</p>
+      </div>
+      <p>測量高度：{height}px</p>
+    </div>
+  );
+}
+```
+
+Callback ref 的優勢：
+
+- 在元素實際掛載到 DOM 後立即被呼叫，比 `useEffect` 更即時
+- 不需要額外的 `useEffect` 來讀取 ref
+- 適合需要在掛載時立即進行 DOM 操作的場景
+
+## 常見用途：Focus、Scroll、動畫
+
+### 自動聚焦
+
+```jsx
+function AutoFocusInput() {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return <input ref={inputRef} placeholder="自動獲得焦點" />;
+}
+```
+
+### 滾動到指定位置
+
+```jsx
+function ScrollToSection() {
+  const sectionRef = useRef(null);
+
+  function scrollToSection() {
+    sectionRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  }
+
+  return (
+    <div>
+      <button onClick={scrollToSection}>跳到區塊</button>
+      {/* ...大量內容... */}
+      <section ref={sectionRef}>
+        <h2>目標區塊</h2>
+      </section>
+    </div>
+  );
+}
+```
+
+### 搭配第三方動畫庫
+
+```jsx
+function AnimatedBox() {
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    // 假設使用 GSAP 動畫庫
+    gsap.to(boxRef.current, {
+      x: 200,
+      rotation: 360,
+      duration: 2,
+      ease: 'power2.out'
+    });
+
+    return () => {
+      gsap.killTweensOf(boxRef.current);
+    };
+  }, []);
+
+  return <div ref={boxRef} className="animated-box">動畫元素</div>;
+}
+```
+
+## 互動範例：Focus 控制與 DOM 測量
+
+<CodePlayground
+  title="useRef — Focus 控制與 DOM 測量"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: system-ui, sans-serif; padding: 16px; }
+.demo-section { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.demo-section h4 { margin-top: 0; color: #1e293b; }
+.demo-input { width: 100%; padding: 10px; border: 2px solid #cbd5e1; border-radius: 6px; font-size: 16px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
+.demo-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; margin: 4px; }
+.btn-blue { background: #3b82f6; color: white; }
+.btn-green { background: #10b981; color: white; }
+.btn-purple { background: #8b5cf6; color: white; }
+.measure-box { padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; margin: 12px 0; resize: both; overflow: auto; min-width: 200px; min-height: 80px; }
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.info-item { background: #f8fafc; padding: 8px 12px; border-radius: 4px; font-size: 13px; font-family: monospace; }
+.info-label { color: #64748b; font-size: 11px; display: block; margin-bottom: 2px; }
+.render-count { font-size: 12px; color: #94a3b8; text-align: right; }`}
+  defaultJS={`const { useState, useRef, useEffect, useCallback } = React;
+
+function App() {
+  var inputRef = useRef(null);
+  var boxRef = useRef(null);
+  var renderCount = useRef(0);
+  var prevValue = useRef('');
+
+  var _s1 = useState('');
+  var inputValue = _s1[0], setInputValue = _s1[1];
+
+  var _s2 = useState(null);
+  var dimensions = _s2[0], setDimensions = _s2[1];
+
+  renderCount.current++;
+
+  var measureBox = useCallback(function() {
+    if (boxRef.current) {
+      var rect = boxRef.current.getBoundingClientRect();
+      setDimensions({
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        top: Math.round(rect.top),
+        left: Math.round(rect.left),
+        right: Math.round(rect.right),
+        bottom: Math.round(rect.bottom)
+      });
+    }
+  }, []);
+
+  useEffect(function() {
+    measureBox();
+    var observer = new ResizeObserver(function() { measureBox(); });
+    if (boxRef.current) observer.observe(boxRef.current);
+    return function() { observer.disconnect(); };
+  }, [measureBox]);
+
+  var previousValue = prevValue.current;
+  prevValue.current = inputValue;
+
+  return React.createElement('div', null,
+    React.createElement('div', { className: 'render-count' },
+      '渲染次數（useRef 追蹤）：' + renderCount.current
+    ),
+
+    React.createElement('div', { className: 'demo-section' },
+      React.createElement('h4', null, '1. Focus 控制'),
+      React.createElement('input', {
+        ref: inputRef,
+        className: 'demo-input',
+        value: inputValue,
+        onChange: function(e) { setInputValue(e.target.value); },
+        placeholder: '在這裡輸入文字...'
+      }),
+      React.createElement('div', { style: { marginTop: 8 } },
+        React.createElement('button', {
+          className: 'btn btn-blue',
+          onClick: function() { inputRef.current.focus(); }
+        }, '聚焦'),
+        React.createElement('button', {
+          className: 'btn btn-green',
+          onClick: function() { inputRef.current.select(); }
+        }, '全選'),
+        React.createElement('button', {
+          className: 'btn btn-purple',
+          onClick: function() {
+            inputRef.current.focus();
+            inputRef.current.setSelectionRange(0, 3);
+          }
+        }, '選取前3字')
+      ),
+      React.createElement('div', {
+        style: { marginTop: 8, fontSize: 13, color: '#64748b' }
+      }, '前一次的值（useRef 追蹤）：「' + previousValue + '」')
+    ),
+
+    React.createElement('div', { className: 'demo-section' },
+      React.createElement('h4', null, '2. DOM 測量（拖曳右下角調整大小）'),
+      React.createElement('div', {
+        ref: boxRef,
+        className: 'measure-box'
+      }, '拖曳右下角改變大小，觀察即時測量數據'),
+      dimensions && React.createElement('div', { className: 'info-grid' },
+        ['width', 'height', 'top', 'left', 'right', 'bottom'].map(function(key) {
+          return React.createElement('div', { key: key, className: 'info-item' },
+            React.createElement('span', { className: 'info-label' }, key),
+            dimensions[key] + 'px'
+          );
+        })
+      ),
+      React.createElement('button', {
+        className: 'btn btn-blue',
+        onClick: measureBox,
+        style: { marginTop: 8 }
+      }, '重新測量')
+    )
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));`}
+  dependencies={["react"]}
+/>
+
+## 注意事項
+
+### 不要在渲染期間讀寫 ref
+
+```jsx
+// 錯誤：在渲染期間讀取 ref
+function BadExample() {
+  const ref = useRef(null);
+  // 在渲染期間 ref.current 可能還是 null
+  return <div style={{ width: ref.current?.offsetWidth }}>{/* ... */}</div>;
+}
+
+// 正確：在事件處理函式或 effect 中讀取 ref
+function GoodExample() {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    if (ref.current) {
+      setWidth(ref.current.offsetWidth);
+    }
+  }, []);
+
+  return <div ref={ref} style={{ minWidth: width }}>{/* ... */}</div>;
+}
+```
+
+### ref 不要濫用
+
+React 的核心理念是宣告式 UI。只在以下情況使用 ref 操作 DOM：
+
+- **管理焦點**：focus、blur、select
+- **觸發動畫**：搭配動畫庫
+- **整合第三方 DOM 函式庫**：地圖、編輯器等
+- **測量元素**：尺寸、位置
+
+不要用 ref 來做 React 能宣告式完成的事（如切換 CSS class、顯示/隱藏元素）。
+
+<Callout type="warning" title="避免用 ref 繞過 React">
+不要使用 `ref.current.textContent = '...'` 來更新 UI 內容，這會繞過 React 的渲染機制，導致狀態和畫面不一致。UI 的更新應該透過 state 來驅動。
+</Callout>
+
+## 面試重點整理
+
+1. **useRef 的兩個用途**：存取 DOM 元素、保存不觸發渲染的可變值
+2. **useRef vs useState**：ref 的修改不觸發重新渲染；state 的修改會觸發重新渲染
+3. **forwardRef 的用途**：讓父元件存取子元件內部的 DOM 節點
+4. **useImperativeHandle**：自訂暴露給父元件的 ref 介面，實現封裝
+5. **Callback ref**：傳遞函式作為 ref，在掛載/卸載時被呼叫，適合即時 DOM 測量
+6. **受控 vs 非受控元件**：受控由 React state 管理，非受控由 DOM 管理搭配 ref 讀取
+7. **不要在渲染期間讀寫 ref**：ref 的讀寫應在事件處理函式或 effect 中進行
+8. **React 19 ref 簡化**：不再需要 forwardRef，ref 可作為普通 prop 傳遞
+
+下一篇我們將深入學習進階 Hooks，包括 `useReducer`、`useCallback`、`useMemo` 以及如何建立自訂 Hook。

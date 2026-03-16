@@ -1,0 +1,452 @@
+# 遠端協作與 Pull Request
+
+Git 的分散式架構讓每個開發者都擁有完整的倉庫副本，但真正的協作力量來自於遠端倉庫（Remote Repository）。理解遠端操作、同步機制與 Pull Request 工作流，是現代團隊開發的必備技能。
+
+## 遠端倉庫的概念
+
+遠端倉庫是託管在網路伺服器上的 Git 倉庫副本，常見的託管平台包括 GitHub、GitLab 與 Bitbucket。當你執行 `git clone` 時，Git 會自動將來源倉庫設定為名為 `origin` 的遠端。
+
+```bash
+# 查看目前設定的遠端倉庫
+git remote -v
+# origin  https://github.com/user/repo.git (fetch)
+# origin  https://github.com/user/repo.git (push)
+```
+
+每個遠端倉庫都有一個簡短別名（如 `origin`），對應到完整的 URL。一個本地倉庫可以同時連接多個遠端。
+
+## git remote 管理遠端
+
+### 新增遠端
+
+```bash
+# 新增一個名為 origin 的遠端
+git remote add origin https://github.com/user/repo.git
+
+# 新增上游倉庫（Fork 工作流常用）
+git remote add upstream https://github.com/original-author/repo.git
+```
+
+### 查看與修改遠端
+
+```bash
+# 列出所有遠端名稱
+git remote
+
+# 列出遠端名稱與對應 URL
+git remote -v
+
+# 查看特定遠端的詳細資訊
+git remote show origin
+
+# 重新命名遠端
+git remote rename origin main-remote
+
+# 修改遠端 URL
+git remote set-url origin https://github.com/user/new-repo.git
+
+# 移除遠端
+git remote remove upstream
+```
+
+<Callout type="info" title="SSH vs HTTPS">
+遠端 URL 有兩種常見格式：HTTPS（`https://github.com/user/repo.git`）與 SSH（`git@github.com:user/repo.git`）。SSH 設定好金鑰後不需要每次輸入密碼，適合頻繁操作；HTTPS 則較容易設定，適合初學者。
+</Callout>
+
+## fetch vs pull 的差異
+
+這是面試中高頻出現的考題，兩者都用於從遠端取得更新，但行為截然不同。
+
+### git fetch — 安全地取得更新
+
+`git fetch` 只下載遠端的新提交與分支資訊，但不會修改你的工作目錄或目前分支：
+
+```bash
+# 從 origin 取得所有分支的更新
+git fetch origin
+
+# 只取得特定分支
+git fetch origin main
+
+# 取得所有遠端的更新
+git fetch --all
+```
+
+fetch 後，遠端分支的參考（如 `origin/main`）會更新，但你的本地 `main` 分支不受影響。你可以先檢查差異再決定是否合併：
+
+```bash
+# 查看遠端 main 比本地多了什麼
+git log main..origin/main --oneline
+
+# 查看具體差異
+git diff main origin/main
+
+# 確認沒問題後再合併
+git merge origin/main
+```
+
+### git pull — 取得並合併
+
+`git pull` 等同於 `git fetch` + `git merge`，一步完成取得與合併：
+
+```bash
+# 從 origin 拉取目前分支的更新並合併
+git pull origin main
+
+# 使用 rebase 取代 merge
+git pull --rebase origin main
+```
+
+### 比較表
+
+| 特性 | git fetch | git pull |
+|------|-----------|----------|
+| 下載遠端更新 | 是 | 是 |
+| 自動合併到本地分支 | 否 | 是 |
+| 可能產生衝突 | 否 | 是 |
+| 安全性 | 高（不修改工作區） | 較低（可能意外合併） |
+| 適用場景 | 先檢查再決定 | 快速同步 |
+
+<Callout type="tip" title="推薦使用 pull --rebase">
+許多團隊推薦使用 `git pull --rebase`，因為它會把本地提交「重新放置」到遠端更新之後，產生更乾淨的線性歷史。你可以設定為預設行為：`git config --global pull.rebase true`。
+</Callout>
+
+## push 操作與上游追蹤
+
+### 基本推送
+
+```bash
+# 推送本地 main 分支到 origin
+git push origin main
+
+# 推送目前分支（若已設定上游）
+git push
+```
+
+### 設定上游追蹤分支
+
+上游追蹤（upstream tracking）讓你的本地分支與遠端分支建立關聯，之後可以直接用 `git push` 與 `git pull` 而不需要指定遠端和分支名：
+
+```bash
+# 推送並設定上游追蹤（第一次推送新分支時常用）
+git push -u origin feature/login
+# 等同於
+git push --set-upstream origin feature/login
+
+# 之後就可以直接使用
+git push
+git pull
+
+# 查看追蹤關係
+git branch -vv
+# * feature/login  a1b2c3d [origin/feature/login] 實作登入功能
+# main             e4f5g6h [origin/main] 更新首頁
+```
+
+### 強制推送
+
+```bash
+# 強制推送（會覆蓋遠端歷史，危險！）
+git push --force
+
+# 安全的強制推送（只在遠端沒有新提交時才覆蓋）
+git push --force-with-lease
+```
+
+<Callout type="warning" title="慎用 force push">
+`git push --force` 會覆蓋遠端的提交歷史，如果其他人已經基於那些提交工作，他們的歷史會跟遠端不一致。只在個人分支上使用強制推送，且優先選擇 `--force-with-lease` 作為更安全的替代方案。
+</Callout>
+
+## Fork 工作流
+
+Fork 工作流是開源專案最常見的協作模式，允許沒有倉庫寫入權限的人也能貢獻程式碼。
+
+### 流程步驟
+
+1. **Fork** — 在 GitHub 上將原始倉庫複製一份到自己的帳號下
+2. **Clone** — 將自己的 Fork 克隆到本地
+
+```bash
+git clone https://github.com/my-account/repo.git
+```
+
+3. **設定 upstream** — 新增原始倉庫為上游
+
+```bash
+git remote add upstream https://github.com/original-author/repo.git
+```
+
+4. **建立功能分支** — 在本地開新分支開發
+
+```bash
+git checkout -b feature/new-feature
+```
+
+5. **開發並提交**
+
+```bash
+git add .
+git commit -m "feat: 新增某功能"
+```
+
+6. **同步上游更新** — 定期將原始倉庫的更新合併到自己的分支
+
+```bash
+git fetch upstream
+git rebase upstream/main
+```
+
+7. **推送到自己的 Fork**
+
+```bash
+git push origin feature/new-feature
+```
+
+8. **建立 Pull Request** — 在 GitHub 上從自己的分支向原始倉庫發送 PR
+
+## Pull Request 流程與 Code Review
+
+Pull Request（PR）是現代軟體開發中程式碼審查的核心機制。在 GitLab 中稱為 Merge Request（MR），概念相同。
+
+### 建立高品質的 PR
+
+一個好的 PR 應該包含：
+
+- **清楚的標題**：簡述改動內容，如 `feat: 新增使用者登入功能`
+- **詳細的描述**：說明為什麼要做這個改動、做了什麼、如何測試
+- **適當的範圍**：每個 PR 只解決一個問題或實現一個功能
+- **附上截圖或測試結果**：UI 改動附截圖，功能改動附測試結果
+
+### Code Review 的最佳實踐
+
+作為審查者：
+
+- 關注邏輯正確性、邊界條件、安全性
+- 檢查程式碼是否符合團隊規範
+- 提供建設性的回饋，而非批判性的
+- 使用「建議」功能直接提出修改方案
+
+作為提交者：
+
+- PR 不宜過大，建議控制在 400 行以內
+- 及時回應審查意見
+- 使用 Draft PR 表示尚未準備好審查的進行中工作
+
+### PR 合併策略
+
+```bash
+# Merge commit — 保留完整歷史
+# 在 GitHub 上選擇 "Create a merge commit"
+
+# Squash and merge — 將多個提交壓縮為一個
+# 適合功能分支有很多小提交的情況
+
+# Rebase and merge — 線性歷史
+# 將分支上的提交逐一 rebase 到主分支上
+```
+
+## 遠端分支管理
+
+### 查看遠端分支
+
+```bash
+# 列出所有遠端分支
+git branch -r
+
+# 列出本地與遠端所有分支
+git branch -a
+
+# 查看遠端分支的最新狀態
+git remote show origin
+```
+
+### 追蹤遠端分支
+
+```bash
+# 建立本地分支並追蹤遠端分支
+git checkout -b feature/login origin/feature/login
+
+# 簡寫（Git 會自動追蹤同名遠端分支）
+git checkout feature/login
+
+# 更新版的指令
+git switch -c feature/login --track origin/feature/login
+```
+
+### 清理遠端分支
+
+```bash
+# 刪除遠端分支
+git push origin --delete feature/old-branch
+
+# 清除本地已不存在於遠端的追蹤分支
+git fetch --prune
+
+# 設定每次 fetch 自動清理
+git config --global fetch.prune true
+```
+
+## upstream 設定與多遠端操作
+
+在複雜的協作環境中，你可能需要管理多個遠端。一個典型的 Fork 工作流會有兩個遠端：
+
+```bash
+# origin — 你自己的 Fork
+# upstream — 原始倉庫
+
+git remote -v
+# origin    https://github.com/me/project.git (fetch)
+# origin    https://github.com/me/project.git (push)
+# upstream  https://github.com/org/project.git (fetch)
+# upstream  https://github.com/org/project.git (push)
+```
+
+### 保持 Fork 同步
+
+```bash
+# 步驟 1：取得上游更新
+git fetch upstream
+
+# 步驟 2：切換到本地 main
+git checkout main
+
+# 步驟 3：合併上游的 main
+git merge upstream/main
+
+# 步驟 4：推送到自己的 Fork
+git push origin main
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模擬 Remote / Local 倉庫同步過程"
+  defaultJS={`// 模擬 Git 遠端與本地倉庫的同步過程
+class GitRepo {
+  constructor(name) {
+    this.name = name;
+    this.commits = [];
+    this.branches = { main: [] };
+    this.currentBranch = 'main';
+  }
+
+  commit(message) {
+    const id = Math.random().toString(36).substr(2, 7);
+    const c = { id, message, time: this.commits.length };
+    this.commits.push(c);
+    this.branches[this.currentBranch].push(id);
+    return id;
+  }
+
+  log() {
+    const branchCommits = this.branches[this.currentBranch];
+    const logs = branchCommits.map(id => {
+      const c = this.commits.find(x => x.id === id);
+      return '  ' + c.id + ' ' + c.message;
+    });
+    return this.name + ' [' + this.currentBranch + ']:\\n' + logs.join('\\n');
+  }
+}
+
+// 建立遠端倉庫（GitHub 上的 origin）
+const remote = new GitRepo('Remote(origin)');
+remote.commit('Initial commit');
+remote.commit('Add README');
+remote.commit('Setup project structure');
+
+console.log('=== 初始遠端狀態 ===');
+console.log(remote.log());
+
+// 模擬 git clone（本地取得遠端所有提交）
+const local = new GitRepo('Local');
+local.commits = JSON.parse(JSON.stringify(remote.commits));
+local.branches.main = [...remote.branches.main];
+
+console.log('\\n=== git clone 後的本地狀態 ===');
+console.log(local.log());
+
+// 本地做一些提交
+local.commit('feat: Add login page');
+local.commit('feat: Add auth logic');
+
+console.log('\\n=== 本地新增提交後 ===');
+console.log(local.log());
+
+// 同時遠端也有其他人推送
+remote.commit('fix: Fix typo in README');
+remote.commit('docs: Update API docs');
+
+console.log('\\n=== 同一時間遠端也有新提交 ===');
+console.log(remote.log());
+
+// 模擬 git fetch（取得遠端更新但不合併）
+console.log('\\n=== git fetch origin ===');
+const fetchedCommits = remote.commits.filter(
+  c => !local.commits.find(lc => lc.id === c.id)
+);
+console.log('取得 ' + fetchedCommits.length + ' 個新提交：');
+fetchedCommits.forEach(c => console.log('  ' + c.id + ' ' + c.message));
+console.log('（本地工作區不受影響，只更新 origin/main 參考）');
+
+// 模擬 git merge（合併遠端更新到本地）
+console.log('\\n=== git merge origin/main ===');
+fetchedCommits.forEach(c => {
+  local.commits.push(c);
+  local.branches.main.push(c.id);
+});
+console.log('合併完成！');
+console.log(local.log());
+
+// 模擬 git push
+console.log('\\n=== git push origin main ===');
+const localOnly = local.commits.filter(
+  c => !remote.commits.find(rc => rc.id === c.id)
+);
+localOnly.forEach(c => {
+  remote.commits.push(c);
+  remote.branches.main.push(c.id);
+});
+console.log('推送 ' + localOnly.length + ' 個提交到遠端');
+console.log(remote.log());
+
+console.log('\\n=== 同步完成！兩邊歷史一致 ===');`}
+/>
+
+## 常見問題與解決方案
+
+### 推送被拒絕
+
+```bash
+# 錯誤：! [rejected] main -> main (non-fast-forward)
+# 原因：遠端有你沒有的提交
+
+# 解決方案 1：先拉取再推送
+git pull --rebase origin main
+git push origin main
+
+# 解決方案 2：如果確定要覆蓋（僅限個人分支）
+git push --force-with-lease origin feature/my-branch
+```
+
+### 處理合併衝突
+
+```bash
+# pull 時發生衝突
+git pull origin main
+# CONFLICT (content): Merge conflict in index.js
+
+# 手動解決衝突後
+git add index.js
+git commit -m "resolve merge conflict"
+git push origin main
+```
+
+## 面試重點整理
+
+1. **fetch vs pull**：`fetch` 只下載不合併，`pull` = `fetch` + `merge`；推薦使用 `pull --rebase` 保持線性歷史
+2. **上游追蹤**：使用 `-u` 設定追蹤關係後，可以省略遠端名稱直接 `push` / `pull`
+3. **Fork 工作流**：Fork → Clone → 設定 upstream → 開分支開發 → 同步上游 → Push → 建立 PR
+4. **force push 的風險**：會覆蓋遠端歷史，影響其他人的工作；優先使用 `--force-with-lease`
+5. **PR 最佳實踐**：控制大小、清楚描述、及時回應 Review
+
+下一篇我們將深入探討各種 Git 工作流程模型，包括 Git Flow、GitHub Flow 與 Trunk-Based Development，幫助你根據團隊規模選擇最適合的協作流程。

@@ -1,0 +1,717 @@
+# 測試策略
+
+撰寫測試是確保 React 應用品質的關鍵環節。好的測試不僅能捕捉 bug，還能作為活文件記錄元件的預期行為。本篇將介紹 React 測試的核心觀念、工具鏈與最佳實踐。
+
+## 測試金字塔
+
+測試金字塔描述了不同層級測試的比例分配：
+
+```
+        /  E2E  \         ← 少量：完整使用者流程（Cypress、Playwright）
+       /  整合測試  \      ← 中量：元件互動與組合（Testing Library）
+      /   單元測試    \    ← 大量：獨立函式與 Hook（Vitest/Jest）
+     ──────────────────
+```
+
+### 各層級的特性
+
+| 層級 | 範圍 | 速度 | 可靠度 | 維護成本 |
+|------|------|------|--------|---------|
+| 單元測試 | 函式、Hook、工具函式 | 極快 | 高 | 低 |
+| 整合測試 | 元件組合、使用者互動 | 快 | 高 | 中 |
+| E2E 測試 | 完整使用者流程 | 慢 | 中（易碎） | 高 |
+
+```jsx
+// 單元測試 — 測試純函式
+test('formatPrice 格式化價格', () => {
+  expect(formatPrice(1000)).toBe('$1,000');
+  expect(formatPrice(0)).toBe('$0');
+  expect(formatPrice(99.9)).toBe('$99.9');
+});
+
+// 整合測試 — 測試元件互動
+test('提交表單後顯示成功訊息', async () => {
+  render(<ContactForm />);
+  await userEvent.type(screen.getByLabelText('姓名'), '小明');
+  await userEvent.click(screen.getByRole('button', { name: '送出' }));
+  expect(await screen.findByText('送出成功')).toBeInTheDocument();
+});
+
+// E2E 測試 — 測試完整流程
+test('使用者可以完成購物流程', async ({ page }) => {
+  await page.goto('/products');
+  await page.click('text=加入購物車');
+  await page.click('text=結帳');
+  await page.fill('[name="address"]', '台北市信義區');
+  await page.click('text=確認付款');
+  await expect(page.locator('.success')).toBeVisible();
+});
+```
+
+## React Testing Library 核心理念
+
+React Testing Library（RTL）的核心哲學是：
+
+> **測試元件的行為，而非實作細節。**
+
+這意味著：測試的方式應該模擬使用者的操作，而不是測試元件的內部狀態或方法。
+
+```jsx
+// ❌ 測試實作細節
+test('counter state 更新', () => {
+  const { result } = renderHook(() => useState(0));
+  act(() => result.current[1](1));
+  expect(result.current[0]).toBe(1); // 測試內部狀態
+});
+
+// ✅ 測試使用者行為
+test('點擊按鈕後數字增加', async () => {
+  render(<Counter />);
+  const button = screen.getByRole('button', { name: '增加' });
+
+  expect(screen.getByText('計數：0')).toBeInTheDocument();
+  await userEvent.click(button);
+  expect(screen.getByText('計數：1')).toBeInTheDocument();
+});
+```
+
+<Callout type="info" title="測試行為而非實作">
+如果你重構元件的內部實作（例如從 useState 改為 useReducer），測試應該不受影響。如果重構導致測試失敗，說明測試耦合了實作細節。好的測試只關心「使用者看到什麼」和「使用者操作後發生什麼」。
+</Callout>
+
+## render、screen、fireEvent 與 waitFor
+
+這是 RTL 的四個核心 API：
+
+### render
+
+```jsx
+import { render } from '@testing-library/react';
+
+// 基本渲染
+const { unmount, rerender, container } = render(<MyComponent />);
+
+// 帶 Provider 渲染
+function renderWithProviders(ui, options = {}) {
+  function Wrapper({ children }) {
+    return (
+      <ThemeProvider>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </ThemeProvider>
+    );
+  }
+  return render(ui, { wrapper: Wrapper, ...options });
+}
+
+// 使用自訂 render
+renderWithProviders(<Dashboard />);
+```
+
+### screen
+
+```jsx
+import { screen } from '@testing-library/react';
+
+render(<LoginForm />);
+
+// screen 是全域查詢容器
+const emailInput = screen.getByLabelText('電子郵件');
+const submitBtn = screen.getByRole('button', { name: '登入' });
+const errorMsg = screen.queryByText('密碼錯誤'); // 可能不存在
+const loadingText = await screen.findByText('載入中'); // 等待出現
+```
+
+### fireEvent vs userEvent
+
+```jsx
+import { fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+// fireEvent — 直接觸發 DOM 事件（底層 API）
+fireEvent.change(input, { target: { value: 'hello' } });
+fireEvent.click(button);
+
+// userEvent — 模擬真實使用者行為（推薦）
+const user = userEvent.setup();
+await user.type(input, 'hello');  // 逐字輸入，觸發完整事件序列
+await user.click(button);         // 模擬真實點擊
+await user.keyboard('{Enter}');   // 鍵盤輸入
+await user.hover(element);        // 滑鼠移入
+```
+
+### waitFor
+
+```jsx
+import { waitFor } from '@testing-library/react';
+
+// 等待非同步操作完成
+await waitFor(() => {
+  expect(screen.getByText('載入完成')).toBeInTheDocument();
+});
+
+// 設定超時時間
+await waitFor(() => {
+  expect(mockApi).toHaveBeenCalled();
+}, { timeout: 3000 });
+
+// findBy* 等同於 waitFor + getBy*
+const element = await screen.findByText('載入完成');
+```
+
+## 查詢優先級
+
+RTL 提供多種查詢方法，有明確的使用優先級：
+
+```jsx
+// 1️⃣ 最高優先：Accessible Role（無障礙角色）
+screen.getByRole('button', { name: '送出' });
+screen.getByRole('heading', { level: 2 });
+screen.getByRole('textbox', { name: '使用者名稱' });
+screen.getByRole('checkbox', { name: '同意條款' });
+
+// 2️⃣ 語義查詢
+screen.getByLabelText('電子郵件');        // label 關聯
+screen.getByPlaceholderText('搜尋...');   // placeholder
+screen.getByText('歡迎回來');              // 可見文字
+screen.getByDisplayValue('current value'); // 表單當前值
+
+// 3️⃣ 語義弱的查詢
+screen.getByAltText('使用者頭像');         // alt 屬性
+screen.getByTitle('關閉');                 // title 屬性
+
+// 4️⃣ 最後手段
+screen.getByTestId('custom-element');      // data-testid
+```
+
+### 查詢變體
+
+```jsx
+// getBy — 找不到時拋出錯誤（適合斷言元素存在）
+screen.getByRole('button');
+
+// queryBy — 找不到時回傳 null（適合斷言元素不存在）
+expect(screen.queryByText('錯誤')).not.toBeInTheDocument();
+
+// findBy — 等待元素出現（回傳 Promise，適合非同步）
+const message = await screen.findByText('成功');
+
+// getAllBy / queryAllBy / findAllBy — 回傳陣列
+const items = screen.getAllByRole('listitem');
+expect(items).toHaveLength(3);
+```
+
+## Hook 測試（renderHook）
+
+使用 `renderHook` 單獨測試 Custom Hook：
+
+```jsx
+import { renderHook, act } from '@testing-library/react';
+
+// 測試 useCounter Hook
+test('useCounter 基本功能', () => {
+  const { result } = renderHook(() => useCounter(0));
+
+  expect(result.current.count).toBe(0);
+
+  act(() => {
+    result.current.increment();
+  });
+
+  expect(result.current.count).toBe(1);
+
+  act(() => {
+    result.current.decrement();
+  });
+
+  expect(result.current.count).toBe(0);
+});
+
+// 測試帶參數的 Hook
+test('useCounter 自訂初始值與步進', () => {
+  const { result, rerender } = renderHook(
+    ({ initial, step }) => useCounter(initial, step),
+    { initialProps: { initial: 10, step: 5 } }
+  );
+
+  expect(result.current.count).toBe(10);
+
+  act(() => result.current.increment());
+  expect(result.current.count).toBe(15);
+
+  // 使用新 props 重新渲染
+  rerender({ initial: 10, step: 2 });
+  act(() => result.current.increment());
+  expect(result.current.count).toBe(17);
+});
+
+// 測試非同步 Hook
+test('useFetch 獲取資料', async () => {
+  const { result } = renderHook(() => useFetch('/api/users'));
+
+  expect(result.current.loading).toBe(true);
+
+  await waitFor(() => {
+    expect(result.current.loading).toBe(false);
+  });
+
+  expect(result.current.data).toEqual([{ id: 1, name: 'Alice' }]);
+});
+```
+
+## Mock 技巧
+
+### Mock API 請求
+
+```jsx
+// 使用 MSW (Mock Service Worker) — 推薦方式
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
+
+const server = setupServer(
+  http.get('/api/users', () => {
+    return HttpResponse.json([
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' },
+    ]);
+  }),
+
+  http.post('/api/login', async ({ request }) => {
+    const body = await request.json();
+    if (body.password === 'correct') {
+      return HttpResponse.json({ token: 'abc123' });
+    }
+    return HttpResponse.json({ error: '密碼錯誤' }, { status: 401 });
+  })
+);
+
+beforeAll(() => server.listen());
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+test('顯示使用者列表', async () => {
+  render(<UserList />);
+  expect(await screen.findByText('Alice')).toBeInTheDocument();
+  expect(screen.getByText('Bob')).toBeInTheDocument();
+});
+
+// 測試錯誤情境
+test('API 錯誤時顯示錯誤訊息', async () => {
+  server.use(
+    http.get('/api/users', () => {
+      return HttpResponse.json(null, { status: 500 });
+    })
+  );
+
+  render(<UserList />);
+  expect(await screen.findByText('載入失敗')).toBeInTheDocument();
+});
+```
+
+### Mock 模組
+
+```jsx
+// Mock 整個模組
+vi.mock('./analytics', () => ({
+  trackEvent: vi.fn(),
+  trackPageView: vi.fn(),
+}));
+
+// Mock 部分匯出
+vi.mock('./utils', async () => {
+  const actual = await vi.importActual('./utils');
+  return {
+    ...actual,
+    fetchData: vi.fn(() => Promise.resolve({ data: 'mocked' })),
+  };
+});
+
+// Mock Router
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => vi.fn(),
+    useParams: () => ({ id: '123' }),
+  };
+});
+```
+
+<Callout type="warning" title="避免過度 Mock">
+過度 Mock 會讓測試失去意義。如果你發現需要 Mock 五六個模組才能測試一個元件，這通常表示元件耦合度太高，應該考慮重構。優先使用 MSW 來 Mock 網路層，其餘盡量使用真實實作。
+</Callout>
+
+## 快照測試（Snapshot Testing）
+
+快照測試會將元件的渲染結果儲存為快照檔案，後續測試時比較差異：
+
+```jsx
+// 基本快照測試
+test('Button 渲染正確', () => {
+  const { container } = render(<Button variant="primary">送出</Button>);
+  expect(container).toMatchSnapshot();
+});
+
+// 內聯快照 — 直接寫在測試檔案中
+test('Badge 渲染正確', () => {
+  const { container } = render(<Badge count={5} />);
+  expect(container).toMatchInlineSnapshot(`
+    <div>
+      <span class="badge">5</span>
+    </div>
+  `);
+});
+```
+
+### 快照測試的優缺點
+
+```jsx
+// ✅ 適合：UI 元件的回歸測試
+test('Icon 各種尺寸', () => {
+  const { asFragment } = render(<Icon name="star" size="sm" />);
+  expect(asFragment()).toMatchSnapshot();
+});
+
+// ❌ 不適合：頻繁變動的元件
+// 快照會不斷失敗，開發者會習慣性更新而不檢查
+test('Dashboard 完整頁面', () => {
+  // 這種大範圍快照很容易變得無意義
+  const { container } = render(<Dashboard />);
+  expect(container).toMatchSnapshot(); // 不建議
+});
+```
+
+## 測試最佳實踐與常見錯誤
+
+### 最佳實踐
+
+```jsx
+// 1. 使用 describe 組織測試
+describe('LoginForm', () => {
+  describe('驗證', () => {
+    test('空白欄位顯示錯誤', async () => { /* ... */ });
+    test('無效 email 格式顯示錯誤', async () => { /* ... */ });
+  });
+
+  describe('提交', () => {
+    test('正確憑證導向首頁', async () => { /* ... */ });
+    test('錯誤密碼顯示錯誤訊息', async () => { /* ... */ });
+  });
+});
+
+// 2. 每個測試獨立（不依賴其他測試的狀態）
+// ❌ 錯誤
+let wrapper;
+test('渲染元件', () => { wrapper = render(<App />); });
+test('點擊按鈕', () => { fireEvent.click(wrapper.getByRole('button')); });
+
+// ✅ 正確
+test('點擊按鈕後更新', async () => {
+  render(<App />);
+  await userEvent.click(screen.getByRole('button'));
+  expect(screen.getByText('已更新')).toBeInTheDocument();
+});
+
+// 3. 使用 Testing Library 的自訂 matcher
+expect(button).toBeDisabled();
+expect(input).toHaveValue('hello');
+expect(element).toBeVisible();
+expect(element).toHaveClass('active');
+expect(form).toHaveFormValues({ name: '小明', age: '25' });
+```
+
+### 常見錯誤
+
+```jsx
+// ❌ 用 container.querySelector 查詢
+const button = container.querySelector('.submit-btn');
+
+// ✅ 用語義查詢
+const button = screen.getByRole('button', { name: '送出' });
+
+// ❌ 直接測試 state
+expect(component.state.isOpen).toBe(true);
+
+// ✅ 測試 DOM 結果
+expect(screen.getByRole('dialog')).toBeVisible();
+
+// ❌ 不等待非同步操作
+test('load data', () => {
+  render(<AsyncComponent />);
+  expect(screen.getByText('data')).toBeInTheDocument(); // 可能失敗！
+});
+
+// ✅ 等待非同步完成
+test('load data', async () => {
+  render(<AsyncComponent />);
+  expect(await screen.findByText('data')).toBeInTheDocument();
+});
+
+// ❌ 在 waitFor 中放入副作用
+await waitFor(() => {
+  fireEvent.click(button); // ❌ waitFor 會多次呼叫這個回呼！
+  expect(screen.getByText('done')).toBeInTheDocument();
+});
+
+// ✅ 副作用在 waitFor 外面
+await userEvent.click(button);
+await waitFor(() => {
+  expect(screen.getByText('done')).toBeInTheDocument();
+});
+```
+
+## Vitest / Jest 設定概述
+
+### Vitest 設定（推薦現代專案使用）
+
+```js
+// vitest.config.js
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    css: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      exclude: ['node_modules/', 'src/test/'],
+    },
+  },
+});
+```
+
+```js
+// src/test/setup.js
+import '@testing-library/jest-dom';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// 每個測試後自動清理
+afterEach(() => {
+  cleanup();
+});
+```
+
+### Jest 設定
+
+```js
+// jest.config.js
+module.exports = {
+  testEnvironment: 'jsdom',
+  setupFilesAfterSetup: ['<rootDir>/src/test/setup.js'],
+  moduleNameMapper: {
+    '\\.(css|less|scss)$': 'identity-obj-proxy',
+    '^@/(.*)$': '<rootDir>/src/$1',
+  },
+  transform: {
+    '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
+  },
+  collectCoverageFrom: [
+    'src/**/*.{js,jsx,ts,tsx}',
+    '!src/**/*.d.ts',
+  ],
+};
+```
+
+### 常用測試腳本
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest --watch"
+  }
+}
+```
+
+## 互動範例
+
+<CodePlayground
+  title="模擬測試 Runner — 測試概念展示"
+  defaultHTML={`<div id="root"></div>`}
+  defaultCSS={`body { font-family: 'Courier New', monospace; padding: 16px; background: #1a1a2e; color: #e0e0e0; }
+.runner { max-width: 600px; margin: 0 auto; }
+h2 { color: #64ffda; font-size: 18px; margin-bottom: 16px; }
+.controls { margin-bottom: 16px; display: flex; gap: 8px; }
+.controls button { padding: 8px 16px; border-radius: 6px; border: 1px solid #444; background: #16213e; color: #e0e0e0; cursor: pointer; font-family: inherit; font-size: 13px; }
+.controls button:hover { background: #0f3460; }
+.controls button.run { background: #22c55e; color: #000; border-color: #22c55e; font-weight: bold; }
+.controls button.run:hover { background: #16a34a; }
+.test-suite { margin: 8px 0; background: #16213e; border-radius: 8px; overflow: hidden; }
+.suite-header { padding: 10px 14px; font-weight: bold; color: #a78bfa; border-bottom: 1px solid #333; cursor: pointer; }
+.test-case { padding: 8px 14px 8px 28px; font-size: 13px; border-bottom: 1px solid #222; display: flex; align-items: center; gap: 8px; }
+.test-case.pass { color: #4ade80; }
+.test-case.fail { color: #f87171; }
+.test-case.pending { color: #666; }
+.icon { width: 16px; display: inline-block; }
+.summary { margin-top: 16px; padding: 12px; border-radius: 8px; background: #16213e; font-size: 14px; line-height: 1.8; }
+.time { color: #fbbf24; }
+.pass-count { color: #4ade80; }
+.fail-count { color: #f87171; }
+.explanation { margin-top: 16px; padding: 12px; background: #0a1628; border: 1px solid #333; border-radius: 8px; font-size: 13px; line-height: 1.7; }
+.explanation code { background: #1e293b; padding: 2px 6px; border-radius: 3px; color: #7dd3fc; }`}
+  defaultJS={`var h = React.createElement;
+var useState = React.useState;
+
+var testSuites = [
+  {
+    name: 'Counter 元件',
+    tests: [
+      { name: '渲染初始值為 0', query: 'getByText("計數：0")', pass: true, time: 3 },
+      { name: '點擊增加按鈕後數字加 1', query: 'getByRole("button", { name: "增加" })', pass: true, time: 8 },
+      { name: '點擊減少按鈕不低於 0', query: 'getByRole("button", { name: "減少" })', pass: true, time: 5 },
+    ]
+  },
+  {
+    name: 'LoginForm 元件',
+    tests: [
+      { name: '空白 email 顯示驗證錯誤', query: 'findByText("請輸入電子郵件")', pass: true, time: 12 },
+      { name: '無效 email 格式顯示錯誤', query: 'findByText("email 格式不正確")', pass: true, time: 15 },
+      { name: '正確憑證後導向首頁', query: 'waitFor(() => expect(navigate).toHaveBeenCalledWith("/"))', pass: true, time: 45 },
+      { name: '錯誤密碼顯示錯誤訊息', query: 'findByText("密碼錯誤")', pass: false, time: 52 },
+    ]
+  },
+  {
+    name: 'useCounter Hook',
+    tests: [
+      { name: '初始值正確', query: 'expect(result.current.count).toBe(0)', pass: true, time: 2 },
+      { name: 'increment 增加計數', query: 'act(() => result.current.increment())', pass: true, time: 3 },
+      { name: 'reset 重設為初始值', query: 'act(() => result.current.reset())', pass: true, time: 2 },
+    ]
+  }
+];
+
+function TestRunner() {
+  var _s = useState('idle');
+  var status = _s[0];
+  var setStatus = _s[1];
+
+  var _r = useState([]);
+  var results = _r[0];
+  var setResults = _r[1];
+
+  var _sel = useState(null);
+  var selected = _sel[0];
+  var setSelected = _sel[1];
+
+  function runTests() {
+    setStatus('running');
+    setResults([]);
+    setSelected(null);
+
+    var allTests = [];
+    testSuites.forEach(function(suite) {
+      suite.tests.forEach(function(test) {
+        allTests.push({ suite: suite.name, name: test.name, pass: test.pass, time: test.time, query: test.query });
+      });
+    });
+
+    var idx = 0;
+    function runNext() {
+      if (idx >= allTests.length) {
+        setStatus('done');
+        return;
+      }
+      var test = allTests[idx];
+      idx++;
+      setResults(function(prev) { return prev.concat([test]); });
+      setTimeout(runNext, 150 + Math.random() * 200);
+    }
+    setTimeout(runNext, 300);
+  }
+
+  function getTestStatus(suiteName, testName) {
+    var found = results.find(function(r) { return r.suite === suiteName && r.name === testName; });
+    if (!found) return 'pending';
+    return found.pass ? 'pass' : 'fail';
+  }
+
+  var passCount = results.filter(function(r) { return r.pass; }).length;
+  var failCount = results.filter(function(r) { return !r.pass; }).length;
+  var totalTime = results.reduce(function(sum, r) { return sum + r.time; }, 0);
+
+  return h('div', { className: 'runner' },
+    h('h2', null, 'React Testing Library — 模擬測試 Runner'),
+    h('div', { className: 'controls' },
+      h('button', { className: 'run', onClick: runTests, disabled: status === 'running' },
+        status === 'running' ? '執行中...' : '▶ 執行全部測試'
+      )
+    ),
+    testSuites.map(function(suite) {
+      return h('div', { key: suite.name, className: 'test-suite' },
+        h('div', { className: 'suite-header' }, 'describe("' + suite.name + '")'),
+        suite.tests.map(function(test) {
+          var s = getTestStatus(suite.name, test.name);
+          var icon = s === 'pass' ? '✓' : s === 'fail' ? '✗' : '○';
+          return h('div', {
+            key: test.name,
+            className: 'test-case ' + s,
+            onClick: function() { if (s !== 'pending') setSelected(test); },
+            style: { cursor: s !== 'pending' ? 'pointer' : 'default' }
+          },
+            h('span', { className: 'icon' }, icon),
+            'test("' + test.name + '")',
+            s !== 'pending' ? h('span', { className: 'time', style: { marginLeft: 'auto' } }, test.time + 'ms') : null
+          );
+        })
+      );
+    }),
+    status === 'done' ? h('div', { className: 'summary' },
+      h('div', null, 'Test Suites: ', h('span', { className: 'pass-count' }, '3 total')),
+      h('div', null,
+        'Tests: ',
+        h('span', { className: 'pass-count' }, passCount + ' passed'),
+        ', ',
+        failCount > 0 ? h('span', { className: 'fail-count' }, failCount + ' failed') : null,
+        ', ' + (passCount + failCount) + ' total'
+      ),
+      h('div', null, 'Time: ', h('span', { className: 'time' }, (totalTime / 1000).toFixed(2) + 's'))
+    ) : null,
+    selected ? h('div', { className: 'explanation' },
+      h('div', null, h('strong', null, 'Test: '), selected.name),
+      h('div', { style: { marginTop: '8px' } },
+        h('strong', null, '查詢方式: '),
+        h('code', null, selected.query)
+      ),
+      h('div', { style: { marginTop: '8px' } },
+        h('strong', null, '結果: '),
+        selected.pass
+          ? h('span', { className: 'pass-count' }, 'PASS — 元素成功找到且斷言通過')
+          : h('span', { className: 'fail-count' }, 'FAIL — Expected "密碼錯誤" to be in the document, but element was not found')
+      ),
+      h('div', { style: { marginTop: '8px', color: '#94a3b8' } },
+        selected.pass
+          ? '提示：使用語義查詢（如 getByRole）可以同時驗證無障礙性'
+          : '提示：使用 findByText 等待非同步渲染，或檢查 Mock API 是否正確設定'
+      )
+    ) : null
+  );
+}
+
+var root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(h(TestRunner));`}
+  dependencies={["react"]}
+/>
+
+## 面試重點整理
+
+1. **測試金字塔**：單元測試多、整合測試中、E2E 測試少；整合測試是 React 的最佳投資報酬率
+2. **RTL 核心理念**：測試使用者行為而非實作細節；重構不應破壞測試
+3. **查詢優先級**：`getByRole` > `getByLabelText` > `getByText` > `getByTestId`
+4. **查詢變體**：`getBy` 找不到拋錯、`queryBy` 回傳 null、`findBy` 等待出現
+5. **userEvent vs fireEvent**：優先使用 `userEvent`，它更接近真實使用者操作
+6. **Hook 測試**：使用 `renderHook` + `act` 包裹狀態更新
+7. **Mock 策略**：使用 MSW Mock 網路層，避免過度 Mock
+8. **快照測試**：適合小型穩定的 UI 元件，不適合大型或頻繁變動的元件
+9. **常見錯誤**：不等待非同步、在 waitFor 中放副作用、用 CSS selector 查詢
+
+本篇是 React 系列的最後一篇測試主題，掌握這些測試技巧將幫助你撰寫更可靠的 React 應用程式。
