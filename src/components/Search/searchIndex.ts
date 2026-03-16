@@ -1,4 +1,4 @@
-import FlexSearch from 'flexsearch'
+import { Index } from 'flexsearch'
 import { getAllItems } from '@/data/contentMap'
 
 export interface SearchResult {
@@ -8,13 +8,13 @@ export interface SearchResult {
   categoryLabel: string
 }
 
-let index: FlexSearch.Index | null = null
+let index: Index | null = null
 let items: SearchResult[] = []
 
 function getIndex() {
   if (index) return { index, items }
 
-  index = new FlexSearch.Index({
+  index = new Index({
     tokenize: 'forward',
     resolution: 9,
   })
